@@ -4,17 +4,15 @@ from yt_dlp import YoutubeDL
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
-# Load .env variables (Render uses .env)
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# Max allowed file size = 150MB
-MAX_FILE_SIZE = 150 * 1024 * 1024
-
-COOKIES_FILE = "cookies.txt"  # Optional cookies
+MAX_FILE_SIZE = 150 * 1024 * 1024  # 150MB
+COOKIES_FILE = "cookies.txt"  # Optional
 
 def download_video(url):
     try:
@@ -25,7 +23,6 @@ def download_video(url):
             'merge_output_format': 'mp4'
         }
 
-        # Use cookies.txt if available
         if os.path.exists(COOKIES_FILE):
             ydl_opts['cookiefile'] = COOKIES_FILE
 
@@ -47,14 +44,17 @@ def download_video(url):
     except Exception as e:
         return {"error": str(e)}
 
-def upload_to_file_io(file_path):
+def upload_to_gofile(file_path):
     try:
         with open(file_path, 'rb') as f:
-            response = requests.post("https://file.io", files={"file": f})
+            response = requests.post(
+                "https://store1.gofile.io/uploadFile",
+                files={"file": f}
+            )
         if response.ok:
-            return response.json().get("link")
+            return response.json()["data"]["downloadPage"]
         return None
-    except Exception as e:
+    except:
         return None
 
 @app.route("/download", methods=["POST"])
@@ -72,16 +72,16 @@ def download_handler():
         return jsonify({"error": result["error"]})
 
     file_path = result["file_path"]
-    uploaded_url = upload_to_file_io(file_path)
+    uploaded_url = upload_to_gofile(file_path)
 
-    # Always delete the file after upload attempt
+    # Clean up the file after upload
     try:
         os.remove(file_path)
     except:
         pass
 
     if not uploaded_url:
-        return jsonify({"error": "Upload to file.io failed."})
+        return jsonify({"error": "Upload to gofile.io failed."})
 
     return jsonify({
         "video_url": uploaded_url,
