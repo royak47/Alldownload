@@ -5,16 +5,17 @@ from yt_dlp import YoutubeDL
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
-# Load .env variables (Render supports them)
+# Load environment variables (Render uses .env support)
 load_dotenv()
 
 app = Flask(__name__)
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-# Optional: Max allowed file size (in bytes), e.g., 150MB
-MAX_FILE_SIZE = 150 * 1024 * 1024  # 150 MB
+# Optional: Limit file size to 150 MB
+MAX_FILE_SIZE = 150 * 1024 * 1024  # 150MB
 
+COOKIES_FILE = "cookies.txt"  # Place cookies.txt in the same directory
 
 def download_video(url):
     try:
@@ -25,15 +26,18 @@ def download_video(url):
             'merge_output_format': 'mp4'
         }
 
+        # Add cookies if file exists
+        if os.path.exists(COOKIES_FILE):
+            ydl_opts['cookiefile'] = COOKIES_FILE
+
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
             title = info.get('title', 'Video')
             filesize = os.path.getsize(file_path)
 
-            # Check size limit
             if filesize > MAX_FILE_SIZE:
-                return {"error": "Video too large. Please use a smaller link (under 150MB)."}
+                return {"error": "Video too large. Please use a link under 150MB."}
 
             return {
                 "file_path": file_path,
@@ -44,7 +48,6 @@ def download_video(url):
     except Exception as e:
         return {"error": str(e)}
 
-
 def upload_to_transfer_sh(file_path):
     try:
         filename = os.path.basename(file_path)
@@ -53,9 +56,8 @@ def upload_to_transfer_sh(file_path):
         if response.ok:
             return response.text.strip()
         return None
-    except Exception as e:
+    except:
         return None
-
 
 @app.route("/download", methods=["POST"])
 def download_handler():
@@ -64,7 +66,6 @@ def download_handler():
 
     data = request.get_json()
     link = data.get("link")
-
     if not link:
         return jsonify({"error": "Missing 'link' in request."}), 400
 
@@ -75,7 +76,7 @@ def download_handler():
     file_path = result["file_path"]
     uploaded_url = upload_to_transfer_sh(file_path)
 
-    # Clean up no matter what
+    # Clean up
     try:
         os.remove(file_path)
     except:
@@ -89,7 +90,6 @@ def download_handler():
         "title": result["title"],
         "size": f"{round(result['filesize'] / 1024 / 1024, 2)}MB"
     })
-
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
