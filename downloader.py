@@ -55,8 +55,11 @@ def upload_to_transfer_sh(file_path):
             response = requests.put(f'https://transfer.sh/{filename}', data=f)
         if response.ok:
             return response.text.strip()
+        else:
+            print("Upload failed:", response.status_code, response.text)
         return None
-    except:
+    except Exception as e:
+        print("Exception during upload:", str(e))
         return None
 
 @app.route("/download", methods=["POST"])
