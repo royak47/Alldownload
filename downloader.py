@@ -3,10 +3,17 @@ import requests
 import json
 from yt_dlp import YoutubeDL
 from flask import Flask, request, jsonify
+from dotenv import load_dotenv
+
+# Load .env variables (Render supports them)
+load_dotenv()
 
 app = Flask(__name__)
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
+# Optional: Max allowed file size (in bytes), e.g., 150MB
+MAX_FILE_SIZE = 150 * 1024 * 1024  # 150 MB
 
 
 def download_video(url):
@@ -22,10 +29,16 @@ def download_video(url):
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
             title = info.get('title', 'Video')
+            filesize = os.path.getsize(file_path)
+
+            # Check size limit
+            if filesize > MAX_FILE_SIZE:
+                return {"error": "Video too large. Please use a smaller link (under 150MB)."}
+
             return {
                 "file_path": file_path,
                 "title": title,
-                "filesize": os.path.getsize(file_path)
+                "filesize": filesize
             }
 
     except Exception as e:
@@ -46,8 +59,12 @@ def upload_to_transfer_sh(file_path):
 
 @app.route("/download", methods=["POST"])
 def download_handler():
-    data = request.json
+    if not request.is_json:
+        return jsonify({"error": "Content-Type must be application/json"}), 400
+
+    data = request.get_json()
     link = data.get("link")
+
     if not link:
         return jsonify({"error": "Missing 'link' in request."}), 400
 
@@ -58,10 +75,14 @@ def download_handler():
     file_path = result["file_path"]
     uploaded_url = upload_to_transfer_sh(file_path)
 
+    # Clean up no matter what
+    try:
+        os.remove(file_path)
+    except:
+        pass
+
     if not uploaded_url:
         return jsonify({"error": "Upload to transfer.sh failed."})
-
-    os.remove(file_path)
 
     return jsonify({
         "video_url": uploaded_url,
@@ -71,4 +92,5 @@ def download_handler():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8080)
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host="0.0.0.0", port=port)
