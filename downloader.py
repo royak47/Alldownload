@@ -5,8 +5,8 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
 load_dotenv()
-app = Flask(__name__)
 
+app = Flask(__name__)
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
@@ -15,47 +15,45 @@ COOKIES_FILE = "cookies.txt"
 
 YOUTUBE_SITES = ["youtube.com", "youtu.be"]
 INSTAGRAM_SITES = ["instagram.com", "www.instagram.com"]
-TWITTER_SITES = ["x.com", "twitter.com"]
+TWITTER_SITES = ["twitter.com", "x.com"]
 
-def get_platform(url):
+
+def identify_platform(url):
     if any(site in url for site in YOUTUBE_SITES):
         return "youtube"
     elif any(site in url for site in INSTAGRAM_SITES):
         return "instagram"
     elif any(site in url for site in TWITTER_SITES):
         return "twitter"
-    return "unknown"
+    return "unsupported"
 
-def download_video(url):
+
+def download_video(url, platform):
     try:
-        platform = get_platform(url)
-
         ydl_opts = {
-            "quiet": True,
-            "outtmpl": os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s"),
-            "merge_output_format": "mp4",
-            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best"
+            'quiet': True,
+            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
+            'merge_output_format': 'mp4'
         }
 
         if platform in ["youtube", "instagram"] and os.path.exists(COOKIES_FILE):
-            ydl_opts["cookiefile"] = COOKIES_FILE
+            ydl_opts['cookiefile'] = COOKIES_FILE
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
 
         if not os.path.exists(filename):
-            return None, None, "❌ Download failed: File not found."
+            return None, "❌ File was not downloaded."
 
-        file_size = os.path.getsize(filename)
-        if file_size > MAX_FILE_SIZE:
-            os.remove(filename)
-            return None, None, f"❌ File too large ({round(file_size/1024/1024)}MB). Max allowed: 150MB"
+        if os.path.getsize(filename) > MAX_FILE_SIZE:
+            return None, "❌ File too large (>150MB)."
 
-        return filename, info.get("title", "Untitled"), None
-
+        return filename, None
     except Exception as e:
-        return None, None, f"❌ Download error: {str(e)}"
+        return None, f"❌ Download failed: {str(e)}"
+
 
 def upload_to_gofile(filepath):
     try:
@@ -64,41 +62,49 @@ def upload_to_gofile(filepath):
                 "https://store1.gofile.io/uploadFile",
                 files={"file": f}
             )
+
         res_json = response.json()
 
         if res_json.get("status") != "ok":
-            return None, f"❌ GoFile error: {res_json}"
+            return None, f"❌ GoFile error: {res_json.get('message', 'Unknown error')}"
 
-        return res_json["data"]["downloadPageUrl"], None
+        data = res_json.get("data", {})
+        download_url = data.get("downloadPageUrl")
+
+        if not download_url:
+            return None, "❌ Missing downloadPageUrl in GoFile response"
+
+        return download_url, None
     except Exception as e:
         return None, f"❌ Exception during GoFile upload: {str(e)}"
 
-@app.route("/download", methods=["POST"])
-def download():
-    data = request.get_json()
-    if not data or "link" not in data:
-        return jsonify({"error": "❌ No link provided"}), 400
 
-    url = data["link"].strip()
-    platform = get_platform(url)
-    if platform == "unknown":
+@app.route("/download", methods=["POST"])
+def process_request():
+    data = request.get_json()
+    url = data.get("link")
+
+    if not url:
+        return jsonify({"error": "No link provided"}), 400
+
+    platform = identify_platform(url)
+    if platform == "unsupported":
         return jsonify({"error": "❌ Unsupported platform"}), 400
 
-    filepath, title, download_error = download_video(url)
-    if download_error:
-        return jsonify({"error": download_error}), 500
+    filepath, error = download_video(url, platform)
+    if error:
+        return jsonify({"error": error}), 500
 
     gofile_url, gofile_error = upload_to_gofile(filepath)
+    os.remove(filepath)
+
     if gofile_error:
         return jsonify({"error": gofile_error}), 500
 
-    os.remove(filepath)
-
     return jsonify({
-        "video_url": gofile_url,
-        "title": title,
-        "size": os.path.getsize(filepath)
+        "download_url": gofile_url
     })
 
-if __name__ == "__main__":
+
+if __name__ == '__main__':
     app.run(host="0.0.0.0", port=5000)
