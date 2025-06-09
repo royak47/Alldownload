@@ -4,6 +4,7 @@ from yt_dlp import YoutubeDL
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
@@ -11,6 +12,7 @@ DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 MAX_FILE_SIZE = 150 * 1024 * 1024  # 150MB
+COOKIES_FILE = "cookies.txt"  # Optional
 
 def download_video(url):
     try:
@@ -21,49 +23,56 @@ def download_video(url):
             'merge_output_format': 'mp4'
         }
 
+        if os.path.exists(COOKIES_FILE):
+            ydl_opts['cookiefile'] = COOKIES_FILE
+
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
-            title = info.get("title", "Video")
-            size = os.path.getsize(file_path)
+            title = info.get('title', 'Video')
+            filesize = os.path.getsize(file_path)
 
-            if size > MAX_FILE_SIZE:
+            if filesize > MAX_FILE_SIZE:
                 return {"error": "Video too large. Please use a link under 150MB."}
 
             return {
                 "file_path": file_path,
                 "title": title,
-                "filesize": size
+                "filesize": filesize
             }
+
     except Exception as e:
         return {"error": str(e)}
 
 def upload_to_gofile(file_path):
     try:
-        # Get Gofile server
-        res = requests.get("https://api.gofile.io/getServer")
-        server = res.json()["data"]["server"]
-
-        # Upload file
-        with open(file_path, "rb") as f:
-            upload = requests.post(
-                f"https://{server}.gofile.io/uploadFile",
-                files={"file": f}
-            )
-
-        if not upload.ok:
+        # Step 1: Get Gofile upload server
+        server_res = requests.get("https://api.gofile.io/getServer")
+        server_data = server_res.json()
+        if server_data["status"] != "ok":
             return None
 
-        response = upload.json()
-        file_data = response["data"]["downloadPage"]
-        direct_link = response["data"]["directLink"]
+        server = server_data["data"]["server"]
+
+        # Step 2: Upload file
+        with open(file_path, "rb") as f:
+            upload_res = requests.post(
+                f"https://{server}.gofile.io/uploadFile",
+                files={"file": f},
+                headers={"User-Agent": "Mozilla/5.0"}
+            )
+
+        upload_data = upload_res.json()
+        if upload_data.get("status") != "ok":
+            return None
 
         return {
-            "page": file_data,
-            "direct": direct_link
+            "page": upload_data["data"]["downloadPage"],
+            "direct": upload_data["data"]["directLink"]
         }
 
     except Exception as e:
+        print("Gofile upload error:", e)
         return None
 
 @app.route("/download", methods=["POST"])
@@ -83,6 +92,7 @@ def download_handler():
     file_path = result["file_path"]
     gofile_result = upload_to_gofile(file_path)
 
+    # Clean up the file
     try:
         os.remove(file_path)
     except:
@@ -92,7 +102,8 @@ def download_handler():
         return jsonify({"error": "Upload to gofile.io failed."})
 
     return jsonify({
-        "video_url": gofile_result["direct"],  # Direct .mp4 link
+        "video_url": gofile_result["direct"],
+        "page_url": gofile_result["page"],
         "title": result["title"],
         "size": f"{round(result['filesize'] / 1024 / 1024, 2)}MB"
     })
