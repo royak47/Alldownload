@@ -1,36 +1,42 @@
 import os
 import requests
-from yt_dlp import YoutubeDL
 from flask import Flask, request, jsonify
+from yt_dlp import YoutubeDL
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
-
 app = Flask(__name__)
+
 DOWNLOAD_DIR = "downloads"
+COOKIES_FILE = "cookies.txt"
+MAX_FILE_SIZE = 150 * 1024 * 1024  # 150 MB
+
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-MAX_FILE_SIZE = 150 * 1024 * 1024  # 150MB
-COOKIES_FILE = "cookies.txt"
+def is_youtube(url):
+    return "youtube.com" in url or "youtu.be" in url
+
+def is_instagram(url):
+    return "instagram.com" in url
+
+def is_terabox(url):
+    return "terabox" in url or "4funbox" in url  # Add more domains if needed
 
 def download_video(url):
     try:
         ydl_opts = {
-            'quiet': True,
-            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
-            'merge_output_format': 'mp4'
+            "quiet": True,
+            "outtmpl": os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s"),
+            "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
+            "merge_output_format": "mp4"
         }
 
-        # ✅ Correctly apply cookies file if it exists
         if os.path.exists(COOKIES_FILE):
-            ydl_opts['cookiefile'] = COOKIES_FILE
+            ydl_opts["cookiefile"] = COOKIES_FILE
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             file_path = ydl.prepare_filename(info)
-            title = info.get('title', 'Video')
             filesize = os.path.getsize(file_path)
 
             if filesize > MAX_FILE_SIZE:
@@ -38,7 +44,7 @@ def download_video(url):
 
             return {
                 "file_path": file_path,
-                "title": title,
+                "title": info.get("title", "Video"),
                 "filesize": filesize
             }
 
@@ -48,10 +54,7 @@ def download_video(url):
 def upload_to_gofile(file_path):
     try:
         with open(file_path, 'rb') as f:
-            response = requests.post(
-                "https://store1.gofile.io/uploadFile",
-                files={"file": f}
-            )
+            response = requests.post("https://store1.gofile.io/uploadFile", files={"file": f})
         if response.ok:
             return response.json()["data"]["downloadPage"]
         return None
@@ -65,8 +68,12 @@ def download_handler():
 
     data = request.get_json()
     link = data.get("link")
+
     if not link:
         return jsonify({"error": "Missing 'link' in request."}), 400
+
+    if is_terabox(link):
+        return jsonify({"error": "TeraBox support must be handled by separate backend."}), 400
 
     result = download_video(link)
     if "error" in result:
@@ -75,7 +82,6 @@ def download_handler():
     file_path = result["file_path"]
     uploaded_url = upload_to_gofile(file_path)
 
-    # Clean up the file after upload
     try:
         os.remove(file_path)
     except:
