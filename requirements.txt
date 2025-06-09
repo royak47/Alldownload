@@ -1,4 +1,5 @@
 flask
-yt-dlp==2024.05.27
+yt-dlp
 requests
+moviepy
 python-dotenv
