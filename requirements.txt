@@ -1,5 +1,2 @@
-flask
-yt-dlp
-requests
-moviepy
-python-dotenv
+Flask==3.0.2
+yt-dlp==2024.05.27
