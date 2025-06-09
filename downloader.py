@@ -61,10 +61,16 @@ def upload_to_gofile(filepath):
                 "https://store1.gofile.io/uploadFile",
                 files={"file": f}
             )
+
         res_json = response.json()
-        return res_json["data"]["downloadPageUrl"]
+
+        if not res_json.get("status") == "ok":
+            return None, f"❌ GoFile API error: {res_json}"
+
+        return res_json["data"]["downloadPageUrl"], None
+
     except Exception as e:
-        return None
+        return None, f"❌ Exception during GoFile upload: {str(e)}"
 
 @app.route("/download", methods=["POST"])
 def handle_download():
@@ -83,10 +89,9 @@ def handle_download():
         if error:
             return jsonify({"error": error}), 500
 
-        gofile_url = upload_to_gofile(filepath)
-        if not gofile_url:
-            return jsonify({"error": "❌ Error: Failed to upload to GoFile"}), 500
-
+        gofile_url, gofile_error = upload_to_gofile(filepath)
+if gofile_error:
+    return jsonify({"error": gofile_error}), 500
         result = {
             "video_url": gofile_url,
             "title": os.path.basename(filepath),
