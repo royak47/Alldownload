@@ -46,15 +46,32 @@ def download_video(url):
 
 def upload_to_gofile(file_path):
     try:
+        # Step 1: Get best server
+        server_res = requests.get("https://api.gofile.io/getServer")
+        server_res.raise_for_status()
+        server = server_res.json()["data"]["server"]
+
+        # Step 2: Upload file
+        upload_url = f"https://{server}.gofile.io/uploadFile"
         with open(file_path, 'rb') as f:
-            response = requests.post(
-                "https://store1.gofile.io/uploadFile",
-                files={"file": f}
-            )
-        if response.ok:
-            return response.json()["data"]["downloadPage"]
+            response = requests.post(upload_url, files={"file": f})
+        response.raise_for_status()
+
+        data = response.json()["data"]
+        file_id = data["fileId"]
+
+        # Step 3: Get direct .mp4 link
+        details = requests.get(f"https://api.gofile.io/getContent?contentId={file_id}&websiteToken=123&cache=true")
+        contents = details.json()["data"]["contents"]
+
+        for item in contents.values():
+            if item["directLink"].endswith(".mp4"):
+                return item["directLink"]
+
         return None
-    except:
+
+    except Exception as e:
+        print("Upload to gofile failed:", e)
         return None
 
 @app.route("/download", methods=["POST"])
@@ -74,7 +91,7 @@ def download_handler():
     file_path = result["file_path"]
     uploaded_url = upload_to_gofile(file_path)
 
-    # Clean up the file after upload
+    # Clean up local file
     try:
         os.remove(file_path)
     except:
