@@ -14,6 +14,15 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 MAX_FILE_SIZE = 150 * 1024 * 1024  # 150MB
 COOKIES_FILE = "cookies.txt"  # Optional
 
+def upload_to_gofile(filepath):
+    with open(filepath, 'rb') as f:
+        files = {'file': f}
+        response = requests.post("https://store1.gofile.io/uploadFile", files=files)
+        data = response.json()
+        if data.get("status") == "ok":
+            return data["data"]["downloadPage"]
+        return None
+
 def download_video(url):
     try:
         ydl_opts = {
@@ -28,67 +37,41 @@ def download_video(url):
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info)
-            title = info.get('title', 'Video')
-            filesize = os.path.getsize(file_path)
+            filename = ydl.prepare_filename(info)
 
-            if filesize > MAX_FILE_SIZE:
-                return {"error": "Video too large. Please use a link under 150MB."}
+        # Check file size
+        if os.path.getsize(filename) > MAX_FILE_SIZE:
+            os.remove(filename)
+            return None, "❌ Video too large (limit is 150MB)."
 
-            return {
-                "file_path": file_path,
-                "title": title,
-                "filesize": filesize
-            }
-
+        return filename, None
     except Exception as e:
-        return {"error": str(e)}
-
-def upload_to_gofile(file_path):
-    try:
-        with open(file_path, 'rb') as f:
-            response = requests.post(
-                "https://store1.gofile.io/uploadFile",
-                files={"file": f}
-            )
-        if response.ok:
-            return response.json()["data"]["downloadPage"]
-        return None
-    except:
-        return None
+        return None, f"❌ Download error: {str(e)}"
 
 @app.route("/download", methods=["POST"])
-def download_handler():
-    if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
-
+def handle_download():
     data = request.get_json()
-    link = data.get("link")
-    if not link:
-        return jsonify({"error": "Missing 'link' in request."}), 400
+    url = data.get("link")
 
-    result = download_video(link)
-    if "error" in result:
-        return jsonify({"error": result["error"]})
+    if not url:
+        return jsonify({"error": "No link provided"}), 400
 
-    file_path = result["file_path"]
-    uploaded_url = upload_to_gofile(file_path)
+    filepath, error = download_video(url)
+    if error:
+        return jsonify({"error": error}), 400
 
-    # Clean up the file after upload
-    try:
-        os.remove(file_path)
-    except:
-        pass
+    gofile_url = upload_to_gofile(filepath)
+    os.remove(filepath)  # Auto-delete temp file after upload
 
-    if not uploaded_url:
-        return jsonify({"error": "Upload to gofile.io failed."})
-
-    return jsonify({
-        "video_url": uploaded_url,
-        "title": result["title"],
-        "size": f"{round(result['filesize'] / 1024 / 1024, 2)}MB"
-    })
+    if gofile_url:
+        return jsonify({
+            "video_url": gofile_url,
+            "title": os.path.basename(filepath),
+            "size": os.path.getsize(filepath)
+        })
+    else:
+        return jsonify({"error": "❌ Upload to GoFile failed."}), 500
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
+    port = int(os.getenv("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
