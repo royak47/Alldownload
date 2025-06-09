@@ -23,8 +23,10 @@ def download_video(url):
             'merge_output_format': 'mp4'
         }
 
-        if os.path.exists(COOKIES_FILE):
-            ydl_opts['cookiefile'] = COOKIES_FILE
+        COOKIES_FILE = "cookies.txt"
+
+if os.path.exists(COOKIES_FILE):
+    ydl_opts['cookiefile'] = COOKIES_FILE
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
