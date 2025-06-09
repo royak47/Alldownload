@@ -14,35 +14,26 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 MAX_FILE_SIZE = 150 * 1024 * 1024  # 150MB
 COOKIES_FILE = "cookies.txt"  # Optional
 
-def download_video(url):
+async def download_youtube_direct(update: Update, url: str):
     try:
+        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
+
         ydl_opts = {
             'quiet': True,
-            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+            'cookiefile': 'cookies.txt',
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
-            'merge_output_format': 'mp4'
+            'merge_output_format': 'mp4',
+            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
         }
-
-        if os.path.exists(COOKIES_FILE):
-            ydl_opts['cookiefile'] = COOKIES_FILE
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            file_path = ydl.prepare_filename(info)
-            title = info.get('title', 'Video')
-            filesize = os.path.getsize(file_path)
+            filename = ydl.prepare_filename(info)
 
-            if filesize > MAX_FILE_SIZE:
-                return {"error": "Video too large. Please use a link under 150MB."}
-
-            return {
-                "file_path": file_path,
-                "title": title,
-                "filesize": filesize
-            }
+        await send_video(update, filename)
 
     except Exception as e:
-        return {"error": str(e)}
+        await update.message.reply_text(f"❌ YouTube download failed:\n{str(e)}")
 
 def upload_to_gofile(file_path):
     try:
