@@ -4,6 +4,7 @@ from yt_dlp import YoutubeDL
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
+# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
@@ -11,7 +12,7 @@ DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 MAX_FILE_SIZE = 150 * 1024 * 1024  # 150MB
-COOKIES_FILE = "cookies.txt"  # Should be in Netscape format
+COOKIES_FILE = "cookies.txt"  # Optional
 
 def download_video(url):
     try:
@@ -19,7 +20,7 @@ def download_video(url):
             'quiet': True,
             'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
-            'merge_output_format': 'mp4',
+            'merge_output_format': 'mp4'
         }
 
         if os.path.exists(COOKIES_FILE):
@@ -32,7 +33,6 @@ def download_video(url):
             filesize = os.path.getsize(file_path)
 
             if filesize > MAX_FILE_SIZE:
-                os.remove(file_path)
                 return {"error": "Video too large. Please use a link under 150MB."}
 
             return {
@@ -46,24 +46,15 @@ def download_video(url):
 
 def upload_to_gofile(file_path):
     try:
-        # Get dynamic server
-        server_res = requests.get("https://api.gofile.io/getServer")
-        server_res.raise_for_status()
-        server = server_res.json()["data"]["server"]
-        upload_url = f"https://{server}.gofile.io/uploadFile"
-
         with open(file_path, 'rb') as f:
-            response = requests.post(upload_url, files={"file": f})
-
+            response = requests.post(
+                "https://store1.gofile.io/uploadFile",
+                files={"file": f}
+            )
         if response.ok:
-            json_data = response.json()
-            return json_data["data"]["downloadPage"]
-
-        print("Upload response not OK:", response.text)
+            return response.json()["data"]["downloadPage"]
         return None
-
-    except Exception as e:
-        print("Upload failed:", e)
+    except:
         return None
 
 @app.route("/download", methods=["POST"])
@@ -83,6 +74,7 @@ def download_handler():
     file_path = result["file_path"]
     uploaded_url = upload_to_gofile(file_path)
 
+    # Clean up the file after upload
     try:
         os.remove(file_path)
     except:
