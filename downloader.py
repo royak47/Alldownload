@@ -14,26 +14,38 @@ os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 MAX_FILE_SIZE = 150 * 1024 * 1024  # 150MB
 COOKIES_FILE = "cookies.txt"  # Optional
 
-async def download_youtube_direct(update: Update, url: str):
+def download_video(url):
     try:
-        os.makedirs(DOWNLOAD_DIR, exist_ok=True)
-
         ydl_opts = {
             'quiet': True,
-            'cookiefile': 'cookies.txt',
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
             'merge_output_format': 'mp4',
-            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s')
         }
+
+        if os.path.exists(COOKIES_FILE):
+            ydl_opts['cookiefile'] = COOKIES_FILE
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
             filename = ydl.prepare_filename(info)
 
-        await send_video(update, filename)
+        if not os.path.exists(filename):
+            return {"error": "Downloaded file not found."}
+
+        filesize = os.path.getsize(filename)
+        if filesize > MAX_FILE_SIZE:
+            os.remove(filename)
+            return {"error": "File size exceeds 150MB limit."}
+
+        return {
+            "file_path": filename,
+            "title": info.get("title", "Unknown Title"),
+            "filesize": filesize
+        }
 
     except Exception as e:
-        await update.message.reply_text(f"❌ YouTube download failed:\n{str(e)}")
+        return {"error": str(e)}
 
 def upload_to_gofile(file_path):
     try:
@@ -43,9 +55,11 @@ def upload_to_gofile(file_path):
                 files={"file": f}
             )
         if response.ok:
-            return response.json()["data"]["downloadPage"]
+            resp_data = response.json()
+            return resp_data.get("data", {}).get("downloadPage")
         return None
-    except:
+    except Exception as e:
+        print("GoFile Upload Error:", e)
         return None
 
 @app.route("/download", methods=["POST"])
@@ -65,11 +79,10 @@ def download_handler():
     file_path = result["file_path"]
     uploaded_url = upload_to_gofile(file_path)
 
-    # Clean up the file after upload
     try:
         os.remove(file_path)
-    except:
-        pass
+    except Exception as e:
+        print("Cleanup error:", e)
 
     if not uploaded_url:
         return jsonify({"error": "Upload to gofile.io failed."})
