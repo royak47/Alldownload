@@ -12,7 +12,7 @@ DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 MAX_FILE_SIZE = 150 * 1024 * 1024  # 150MB
-COOKIES_FILE = "cookies.txt"  # Optional
+COOKIES_FILE = "cookies.txt"
 
 def download_video(url):
     try:
@@ -23,10 +23,9 @@ def download_video(url):
             'merge_output_format': 'mp4'
         }
 
-        COOKIES_FILE = "cookies.txt"
-
-if os.path.exists(COOKIES_FILE):
-    ydl_opts['cookiefile'] = COOKIES_FILE
+        # ✅ Correctly apply cookies file if it exists
+        if os.path.exists(COOKIES_FILE):
+            ydl_opts['cookiefile'] = COOKIES_FILE
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
