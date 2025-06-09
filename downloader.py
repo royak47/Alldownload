@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 from yt_dlp import YoutubeDL
 from flask import Flask, request, jsonify
@@ -57,21 +58,27 @@ def upload_to_gofile(file_path):
             response = requests.post(upload_url, files={"file": f})
         response.raise_for_status()
 
-        data = response.json()["data"]
-        file_id = data["fileId"]
+        # Step 3: Get fileId
+        upload_data = response.json()["data"]
+        file_id = upload_data["fileId"]
 
-        # Step 3: Get direct .mp4 link
-        details = requests.get(f"https://api.gofile.io/getContent?contentId={file_id}&websiteToken=123&cache=true")
+        # Step 4: Wait for content to be available
+        time.sleep(2)
+        content_url = f"https://api.gofile.io/getContent?contentId={file_id}&cache=true"
+        details = requests.get(content_url)
+        details.raise_for_status()
         contents = details.json()["data"]["contents"]
 
         for item in contents.values():
-            if item["directLink"].endswith(".mp4"):
+            if item["directLink"].endswith(".mp4") or ".mp4" in item["directLink"]:
                 return item["directLink"]
 
-        return None
+        # If no mp4, return first available file link
+        first = next(iter(contents.values()))
+        return first["directLink"]
 
     except Exception as e:
-        print("Upload to gofile failed:", e)
+        print("Upload to Gofile failed:", e)
         return None
 
 @app.route("/download", methods=["POST"])
@@ -89,19 +96,19 @@ def download_handler():
         return jsonify({"error": result["error"]})
 
     file_path = result["file_path"]
-    uploaded_url = upload_to_gofile(file_path)
+    video_url = upload_to_gofile(file_path)
 
-    # Clean up local file
+    # Clean up
     try:
         os.remove(file_path)
     except:
         pass
 
-    if not uploaded_url:
+    if not video_url:
         return jsonify({"error": "Upload to gofile.io failed."})
 
     return jsonify({
-        "video_url": uploaded_url,
+        "video_url": video_url,
         "title": result["title"],
         "size": f"{round(result['filesize'] / 1024 / 1024, 2)}MB"
     })
