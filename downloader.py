@@ -1,5 +1,4 @@
 import os
-import time
 import requests
 from yt_dlp import YoutubeDL
 from flask import Flask, request, jsonify
@@ -47,38 +46,15 @@ def download_video(url):
 
 def upload_to_gofile(file_path):
     try:
-        # Step 1: Get best server
-        server_res = requests.get("https://api.gofile.io/getServer")
-        server_res.raise_for_status()
-        server = server_res.json()["data"]["server"]
-
-        # Step 2: Upload file
-        upload_url = f"https://{server}.gofile.io/uploadFile"
         with open(file_path, 'rb') as f:
-            response = requests.post(upload_url, files={"file": f})
-        response.raise_for_status()
-
-        # Step 3: Get fileId
-        upload_data = response.json()["data"]
-        file_id = upload_data["fileId"]
-
-        # Step 4: Wait for content to be available
-        time.sleep(2)
-        content_url = f"https://api.gofile.io/getContent?contentId={file_id}&cache=true"
-        details = requests.get(content_url)
-        details.raise_for_status()
-        contents = details.json()["data"]["contents"]
-
-        for item in contents.values():
-            if item["directLink"].endswith(".mp4") or ".mp4" in item["directLink"]:
-                return item["directLink"]
-
-        # If no mp4, return first available file link
-        first = next(iter(contents.values()))
-        return first["directLink"]
-
-    except Exception as e:
-        print("Upload to Gofile failed:", e)
+            response = requests.post(
+                "https://store1.gofile.io/uploadFile",
+                files={"file": f}
+            )
+        if response.ok:
+            return response.json()["data"]["downloadPage"]
+        return None
+    except:
         return None
 
 @app.route("/download", methods=["POST"])
@@ -96,19 +72,19 @@ def download_handler():
         return jsonify({"error": result["error"]})
 
     file_path = result["file_path"]
-    video_url = upload_to_gofile(file_path)
+    uploaded_url = upload_to_gofile(file_path)
 
-    # Clean up
+    # Clean up the file after upload
     try:
         os.remove(file_path)
     except:
         pass
 
-    if not video_url:
+    if not uploaded_url:
         return jsonify({"error": "Upload to gofile.io failed."})
 
     return jsonify({
-        "video_url": video_url,
+        "video_url": uploaded_url,
         "title": result["title"],
         "size": f"{round(result['filesize'] / 1024 / 1024, 2)}MB"
     })
