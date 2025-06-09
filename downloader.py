@@ -1,26 +1,43 @@
 import os
 import requests
-from yt_dlp import YoutubeDL
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
+from yt_dlp import YoutubeDL
+from moviepy.editor import VideoFileClip
 
-# Load environment variables
+# Load .env variables
 load_dotenv()
 
 app = Flask(__name__)
 DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-MAX_FILE_SIZE = 150 * 1024 * 1024  # 150MB
-COOKIES_FILE = "cookies.txt"  # Optional
+MAX_FILE_SIZE = 150 * 1024 * 1024  # 150 MB
+COOKIES_FILE = "cookies.txt"  # optional
 
+# ✅ Check video duration
+def is_valid_video(file_path):
+    try:
+        clip = VideoFileClip(file_path)
+        duration = clip.duration
+        clip.close()
+        return duration > 2  # At least 2 seconds
+    except Exception as e:
+        print("Duration check error:", e)
+        return False
+
+# ✅ Download from YouTube or any supported site
 def download_video(url):
     try:
         ydl_opts = {
             'quiet': True,
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
+            'format': 'best[ext=mp4]/best',
             'merge_output_format': 'mp4',
-            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s')
+            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+            'postprocessors': [{
+                'key': 'FFmpegVideoConvertor',
+                'preferedformat': 'mp4'
+            }]
         }
 
         if os.path.exists(COOKIES_FILE):
@@ -38,6 +55,10 @@ def download_video(url):
             os.remove(filename)
             return {"error": "File size exceeds 150MB limit."}
 
+        if not is_valid_video(filename):
+            os.remove(filename)
+            return {"error": "Invalid or too short video."}
+
         return {
             "file_path": filename,
             "title": info.get("title", "Unknown Title"),
@@ -47,21 +68,23 @@ def download_video(url):
     except Exception as e:
         return {"error": str(e)}
 
+# ✅ Upload to GoFile.io (latest API)
 def upload_to_gofile(file_path):
     try:
         with open(file_path, 'rb') as f:
             response = requests.post(
-                "https://store1.gofile.io/uploadFile",
+                "https://api.gofile.io/uploadFile",
                 files={"file": f}
             )
         if response.ok:
-            resp_data = response.json()
-            return resp_data.get("data", {}).get("downloadPage")
+            data = response.json()
+            return data.get("data", {}).get("downloadPage")
         return None
     except Exception as e:
-        print("GoFile Upload Error:", e)
+        print("GoFile upload error:", e)
         return None
 
+# ✅ Flask route to handle POST requests
 @app.route("/download", methods=["POST"])
 def download_handler():
     if not request.is_json:
@@ -93,6 +116,7 @@ def download_handler():
         "size": f"{round(result['filesize'] / 1024 / 1024, 2)}MB"
     })
 
+# ✅ App entry point
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8080))
     app.run(host="0.0.0.0", port=port)
