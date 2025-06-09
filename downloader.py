@@ -1,101 +1,124 @@
 import os
 import requests
-from flask import Flask, request, jsonify
+import asyncio
+from telegram import Update
+from telegram.ext import (
+    ApplicationBuilder,
+    ContextTypes,
+    CommandHandler,
+    MessageHandler,
+    filters,
+)
 from yt_dlp import YoutubeDL
 from dotenv import load_dotenv
 
 load_dotenv()
-app = Flask(__name__)
+BOT_TOKEN = os.getenv("BOT_TOKEN")
 
 DOWNLOAD_DIR = "downloads"
-COOKIES_FILE = "cookies.txt"
-MAX_FILE_SIZE = 150 * 1024 * 1024  # 150MB
-
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
-
-def is_supported(link):
-    return any(site in link for site in [
-        "youtube.com", "youtu.be", "instagram.com", "twitter.com", "x.com"
-    ])
+YOUTUBE_SITES = ["youtube.com", "youtu.be"]
+TWITTER_SITES = ["twitter.com", "x.com"]
+INSTAGRAM_SITES = ["instagram.com", "www.instagram.com"]
 
 
-def download_video(link):
-    ydl_opts = {
-        "quiet": True,
-        "outtmpl": os.path.join(DOWNLOAD_DIR, "%(title)s.%(ext)s"),
-        "format": "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best",
-        "merge_output_format": "mp4"
-    }
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("👋 Send me a YouTube, Instagram, or Twitter link to download the video.")
 
-    if os.path.exists(COOKIES_FILE):
-        ydl_opts["cookiefile"] = COOKIES_FILE
 
+async def handle_link(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    url = update.message.text.strip()
+    await update.message.reply_text("⏬ Downloading... Please wait.")
+
+    if any(site in url for site in YOUTUBE_SITES):
+        await download_youtube(update, url)
+    elif any(site in url for site in INSTAGRAM_SITES + TWITTER_SITES):
+        await download_generic(update, url)
+    else:
+        await update.message.reply_text("❌ Unsupported link. Please send a YouTube, Instagram, or Twitter video link.")
+
+
+async def download_youtube(update: Update, url: str):
     try:
+        ydl_opts = {
+            'quiet': True,
+            'cookiefile': 'cookies.txt',
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best',
+            'merge_output_format': 'mp4',
+            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+        }
+
         with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(link, download=True)
+            info = ydl.extract_info(url, download=True)
             filepath = ydl.prepare_filename(info)
-            filesize = os.path.getsize(filepath)
 
-            if filesize > MAX_FILE_SIZE:
-                os.remove(filepath)
-                return {"error": "❌ File too large. Limit is 150MB."}
-
-            return {
-                "file_path": filepath,
-                "title": info.get("title", "Video"),
-                "filesize": filesize
-            }
+        await send_video(update, filepath)
 
     except Exception as e:
-        return {"error": f"Download error: {str(e)}"}
+        await update.message.reply_text(f"❌ YouTube download failed:\n{str(e)}")
 
 
-def upload_to_gofile(file_path):
+async def download_generic(update: Update, url: str):
     try:
-        with open(file_path, 'rb') as f:
+        ydl_opts = {
+            'quiet': True,
+            'outtmpl': os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
+        }
+
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filepath = ydl.prepare_filename(info)
+
+        await send_video(update, filepath)
+
+    except Exception as e:
+        await update.message.reply_text(f"❌ Download failed:\n{str(e)}")
+
+
+async def send_video(update: Update, filepath: str):
+    try:
+        await update.message.reply_text("📤 Uploading to Gofile...")
+
+        with open(filepath, 'rb') as f:
             res = requests.post("https://store1.gofile.io/uploadFile", files={"file": f})
-        if res.ok:
-            return res.json()["data"]["downloadPage"]
-    except Exception:
-        pass
-    return None
+
+        data = res.json()
+        if res.ok and data.get("status") == "ok":
+            file_id = data["data"]["fileId"]
+            delete_token = data["data"]["deleteToken"]
+            url = data["data"]["downloadPage"]
+
+            await update.message.reply_text(f"✅ Uploaded:\n{url}\n\n⚠️ This link will auto-delete in 10 minutes.")
+
+            asyncio.create_task(delete_gofile_later(file_id, delete_token, 600))
+        else:
+            await update.message.reply_text("❌ Failed to upload to Gofile.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Upload failed:\n{str(e)}")
+    finally:
+        if os.path.exists(filepath):
+            os.remove(filepath)
 
 
-@app.route("/download", methods=["POST"])
-def handle_download():
-    if not request.is_json:
-        return jsonify({"error": "Content-Type must be application/json"}), 400
-
-    data = request.get_json()
-    link = data.get("link")
-
-    if not link or not is_supported(link):
-        return jsonify({"error": "❌ Invalid or unsupported link."}), 400
-
-    result = download_video(link)
-
-    if "error" in result:
-        return jsonify({"error": result["error"]})
-
-    file_path = result["file_path"]
-    download_url = upload_to_gofile(file_path)
-
+async def delete_gofile_later(file_id: str, delete_token: str, delay: int):
+    await asyncio.sleep(delay)
     try:
-        os.remove(file_path)
-    except Exception:
-        pass
-
-    if not download_url:
-        return jsonify({"error": "❌ Upload to gofile.io failed."})
-
-    return jsonify({
-        "video_url": download_url,
-        "title": result["title"],
-        "size": f"{round(result['filesize'] / 1024 / 1024, 2)} MB"
-    })
+        response = requests.delete(
+            "https://api.gofile.io/deleteUpload",
+            params={"fileId": file_id, "token": delete_token}
+        )
+        if response.ok:
+            print(f"✅ Deleted from Gofile: {file_id}")
+        else:
+            print(f"❌ Failed to delete: {file_id}")
+    except Exception as e:
+        print(f"❌ Error in auto-delete: {str(e)}")
 
 
-if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_link))
+    print("🤖 Bot is running...")
+    app.run_polling()
