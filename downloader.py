@@ -4,7 +4,6 @@ from yt_dlp import YoutubeDL
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 
-# Load environment variables
 load_dotenv()
 
 app = Flask(__name__)
@@ -12,7 +11,7 @@ DOWNLOAD_DIR = "downloads"
 os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
 MAX_FILE_SIZE = 150 * 1024 * 1024  # 150MB
-COOKIES_FILE = "cookies.txt"  # Optional
+COOKIES_FILE = "cookies.txt"
 
 def download_video(url):
     try:
@@ -44,15 +43,14 @@ def download_video(url):
     except Exception as e:
         return {"error": str(e)}
 
-def upload_to_gofile(file_path):
+def upload_to_file_io(file_path):
     try:
         with open(file_path, 'rb') as f:
-            response = requests.post(
-                "https://store1.gofile.io/uploadFile",
-                files={"file": f}
-            )
+            response = requests.post("https://file.io", files={"file": f})
         if response.ok:
-            return response.json()["data"]["downloadPage"]
+            json_data = response.json()
+            if json_data.get("success"):
+                return json_data.get("link")
         return None
     except:
         return None
@@ -72,16 +70,16 @@ def download_handler():
         return jsonify({"error": result["error"]})
 
     file_path = result["file_path"]
-    uploaded_url = upload_to_gofile(file_path)
+    uploaded_url = upload_to_file_io(file_path)
 
-    # Clean up the file after upload
+    # Clean up
     try:
         os.remove(file_path)
     except:
         pass
 
     if not uploaded_url:
-        return jsonify({"error": "Upload to gofile.io failed."})
+        return jsonify({"error": "Upload to file.io failed."})
 
     return jsonify({
         "video_url": uploaded_url,
