@@ -20,7 +20,7 @@ def is_instagram(url):
     return "instagram.com" in url
 
 def is_terabox(url):
-    return "terabox" in url or "4funbox" in url  # Add more domains if needed
+    return "terabox" in url or "4funbox" in url
 
 def download_video(url):
     try:
@@ -56,9 +56,15 @@ def upload_to_gofile(file_path):
         with open(file_path, 'rb') as f:
             response = requests.post("https://store1.gofile.io/uploadFile", files={"file": f})
         if response.ok:
-            return response.json()["data"]["downloadPage"]
+            data = response.json()
+            direct_url = data["data"]["downloadPage"]
+            # For direct file link
+            server = data["data"]["server"]
+            file_id = data["data"]["code"]
+            return f"https://{server}.gofile.io/downloadFile/{file_id}"
         return None
-    except:
+    except Exception as e:
+        print("Gofile upload error:", e)
         return None
 
 @app.route("/download", methods=["POST"])
