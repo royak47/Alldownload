@@ -1,13 +1,23 @@
-# backend.py (Flask app for extracting direct video link with optional cookies)
+# backend.py
 
 import os
 from flask import Flask, request, jsonify
-from yt_dlp import YoutubeDL
+from yt_dlp import YoutubeDL, __version__ as ydl_version
+from packaging import version
 
 app = Flask(__name__)
 
-COOKIES_FILE = "cookies.txt"  # Add your login cookies here if needed
+# ✅ Minimum yt-dlp version required
+MIN_YTDLP_VERSION = "2024.05.27"
 
+# 🔍 Check yt-dlp version on app startup
+if version.parse(ydl_version) < version.parse(MIN_YTDLP_VERSION):
+    raise RuntimeError(
+        f"❌ yt-dlp version too old: {ydl_version}. Please upgrade to {MIN_YTDLP_VERSION} or newer using:\n\n  yt-dlp -U"
+    )
+
+# ✅ Optional cookies file (if Instagram login is needed)
+COOKIES_FILE = "cookies.txt"
 
 def get_direct_video_url(link):
     try:
@@ -24,7 +34,7 @@ def get_direct_video_url(link):
             info = ydl.extract_info(link, download=False)
             return {
                 "title": info.get("title", "Unknown"),
-                "url": info.get("url"),  # Direct video stream/download link
+                "url": info.get("url"),
                 "duration": info.get("duration"),
                 "uploader": info.get("uploader", "Unknown")
             }
