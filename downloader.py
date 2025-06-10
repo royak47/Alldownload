@@ -6,12 +6,15 @@ from packaging import version
 
 app = Flask(__name__)
 
+# Minimum yt-dlp version required
 MIN_YTDLP_VERSION = "2024.05.27"
 if version.parse(ydl_version) < version.parse(MIN_YTDLP_VERSION):
-    raise RuntimeError(f"❌ yt-dlp version too old: {ydl_version}. Please upgrade to {MIN_YTDLP_VERSION} or newer")
+    raise RuntimeError(f"❌ yt-dlp version too old: {ydl_version}. Please upgrade to {MIN_YTDLP_VERSION} or newer.")
 
+# Optional cookies file (for Instagram etc.)
 COOKIES_FILE = "cookies.txt"
 
+# Extract video info using yt-dlp
 def get_direct_video_url(link):
     try:
         ydl_opts = {
@@ -25,15 +28,50 @@ def get_direct_video_url(link):
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(link, download=False)
             formats = info.get("formats", [])
-            
-            # Try to get best combined video+audio with direct CDN-like URL
+
+            # For Instagram: Video URL extraction fix (if only audio is available, prioritize video)
+            if "instagram" in link:
+                # Filter out only mp4 video formats
+                formats = [f for f in formats if f.get("ext") == "mp4" and f.get("url")]
+                if formats:
+                    best = max(formats, key=lambda f: f.get("tbr") or 0)
+                    return {
+                        "title": info.get("title", "Unknown"),
+                        "url": best.get("url"),
+                        "duration": info.get("duration"),
+                        "uploader": info.get("uploader", "Unknown"),
+                    }
+                else:
+                    # Fallback if no video is found, return audio
+                    audio = next((f for f in formats if f.get("ext") == "m4a" and f.get("url")), None)
+                    return {
+                        "title": info.get("title", "Unknown"),
+                        "url": audio["url"] if audio else info.get("url"),
+                        "duration": info.get("duration"),
+                        "uploader": info.get("uploader", "Unknown"),
+                    }
+
+            # Pinterest: Handle error when format is not available
+            elif "pinterest" in link:
+                # Fall back to best available format if direct video URL is missing
+                if "formats" in info and not info.get("url"):
+                    formats = [f for f in info['formats'] if f.get('ext') == 'mp4' and f.get('url')]
+                    if formats:
+                        best = max(formats, key=lambda f: f.get('tbr') or 0)
+                        return {
+                            "title": info.get("title", "Unknown"),
+                            "url": best.get("url"),
+                            "duration": info.get("duration"),
+                            "uploader": info.get("uploader", "Unknown"),
+                        }
+
+            # Default behavior (for other platforms)
             best = None
             for f in sorted(formats, key=lambda x: x.get("tbr") or 0, reverse=True):
-                if f.get("ext") in ["mp4", "m4a"] and f.get("url") and not f.get("acodec") == "none":
+                if f.get("ext") in ["mp4", "m4a"] and f.get("url"):
                     best = f
                     break
 
-            # Fallback if main url is available
             final_url = best.get("url") if best else info.get("url")
 
             return {
