@@ -1,9 +1,7 @@
-# backend.py
-
 import os
 from flask import Flask, request, jsonify
 from yt_dlp import YoutubeDL
-from yt_dlp.version import __version__ as ydl_version  # ✅ Correct import
+from yt_dlp.version import version as ydl_version  # ✅ Correct import
 from packaging import version
 
 app = Flask(__name__)
@@ -23,12 +21,14 @@ COOKIES_FILE = "cookies.txt"
 # 🔽 Extract video info using yt-dlp
 def get_direct_video_url(link):
     try:
+        # Set yt-dlp options to select best video and audio quality
         ydl_opts = {
             'quiet': True,
             'skip_download': True,
-            'format': 'best[ext=mp4]/best',
+            'format': 'bestvideo+bestaudio/best',  # Selects the best video and best audio streams
         }
 
+        # If cookies file exists, use it
         if os.path.exists(COOKIES_FILE):
             ydl_opts['cookiefile'] = COOKIES_FILE
 
