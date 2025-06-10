@@ -1,57 +1,60 @@
 import os
 from flask import Flask, request, jsonify
-import yt_dlp  # Import yt_dlp
+from yt_dlp import YoutubeDL
 from packaging import version
 
 app = Flask(__name__)
 
-# ✅ Minimum yt-dlp version required
+# ✅ Minimum yt-dlp version
 MIN_YTDLP_VERSION = "2024.05.27"
 
-# 🔍 Check yt-dlp version
+# Check yt-dlp version safely
 try:
-    # Check the yt-dlp version by getting it from utils module
-    yt_dlp_version = yt_dlp.utils.Version()
-except AttributeError:
+    from yt_dlp.version import __version__ as ytdlp_version
+except ImportError:
+    ytdlp_version = "0.0.0"
+
+if version.parse(ytdlp_version) < version.parse(MIN_YTDLP_VERSION):
     raise RuntimeError(
-        f"❌ Could not determine yt-dlp version. Please make sure yt-dlp is correctly installed."
+        f"❌ yt-dlp version too old: {ytdlp_version}. Please upgrade to {MIN_YTDLP_VERSION} or newer using:\n\n  yt-dlp -U"
     )
 
-# Compare the version
-if version.parse(str(yt_dlp_version)) < version.parse(MIN_YTDLP_VERSION):
-    raise RuntimeError(
-        f"❌ yt-dlp version too old: {yt_dlp_version}. Please upgrade to {MIN_YTDLP_VERSION} or newer using:\n\n  yt-dlp -U"
-    )
-
-# ✅ Optional cookies file (for Instagram etc.)
 COOKIES_FILE = "cookies.txt"
 
-# 🔽 Extract video info using yt-dlp
 def get_direct_video_url(link):
     try:
-        # Set yt-dlp options to select best video and audio quality
         ydl_opts = {
             'quiet': True,
             'skip_download': True,
-            'format': 'bestvideo+bestaudio/best',  # Selects the best video and best audio streams
+            'format': 'bestvideo+bestaudio/best',
         }
 
-        # If cookies file exists, use it
         if os.path.exists(COOKIES_FILE):
             ydl_opts['cookiefile'] = COOKIES_FILE
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+        with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(link, download=False)
+
+            # Use direct video URL from best format if available
+            if 'formats' in info:
+                best_format = max(info['formats'], key=lambda f: f.get("tbr", 0))
+                return {
+                    "title": info.get("title", "Unknown"),
+                    "url": best_format.get("url"),
+                    "duration": info.get("duration"),
+                    "uploader": info.get("uploader", "Unknown")
+                }
+
             return {
                 "title": info.get("title", "Unknown"),
                 "url": info.get("url"),
                 "duration": info.get("duration"),
                 "uploader": info.get("uploader", "Unknown")
             }
+
     except Exception as e:
         return {"error": str(e)}
 
-# 🔗 POST /getlink endpoint
 @app.route('/getlink', methods=['POST'])
 def get_link():
     data = request.get_json()
@@ -62,7 +65,6 @@ def get_link():
     result = get_direct_video_url(url)
     return jsonify(result)
 
-# 🚀 Start Flask server
 if __name__ == '__main__':
-    print(f"✅ yt-dlp version: {yt_dlp_version}")
+    print(f"✅ yt-dlp version: {ytdlp_version}")
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
