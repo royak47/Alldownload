@@ -29,9 +29,8 @@ def get_direct_video_url(link):
             info = ydl.extract_info(link, download=False)
             formats = info.get("formats", [])
 
-            # For Instagram: Video URL extraction fix (if only audio is available, prioritize video)
+            # Instagram Handling (ensure audio and video are both included)
             if "instagram" in link:
-                # Filter out only mp4 video formats
                 formats = [f for f in formats if f.get("ext") == "mp4" and f.get("url")]
                 if formats:
                     best = max(formats, key=lambda f: f.get("tbr") or 0)
@@ -42,7 +41,7 @@ def get_direct_video_url(link):
                         "uploader": info.get("uploader", "Unknown"),
                     }
                 else:
-                    # Fallback if no video is found, return audio
+                    # Fallback: If only audio found, return it
                     audio = next((f for f in formats if f.get("ext") == "m4a" and f.get("url")), None)
                     return {
                         "title": info.get("title", "Unknown"),
@@ -51,9 +50,8 @@ def get_direct_video_url(link):
                         "uploader": info.get("uploader", "Unknown"),
                     }
 
-            # Pinterest: Handle error when format is not available
+            # Pinterest Handling: Handle unavailable format gracefully
             elif "pinterest" in link:
-                # Fall back to best available format if direct video URL is missing
                 if "formats" in info and not info.get("url"):
                     formats = [f for f in info['formats'] if f.get('ext') == 'mp4' and f.get('url')]
                     if formats:
@@ -64,8 +62,26 @@ def get_direct_video_url(link):
                             "duration": info.get("duration"),
                             "uploader": info.get("uploader", "Unknown"),
                         }
+                    else:
+                        return {"error": "❌ No video format available for this Pinterest URL."}
 
-            # Default behavior (for other platforms)
+            # YouTube: Ensure correct audio and video extraction
+            elif "youtube" in link:
+                best = None
+                for f in sorted(formats, key=lambda x: x.get("tbr") or 0, reverse=True):
+                    if f.get("ext") == "mp4" and f.get("url"):
+                        best = f
+                        break
+                final_url = best.get("url") if best else info.get("url")
+
+                return {
+                    "title": info.get("title", "Unknown"),
+                    "url": final_url,
+                    "duration": info.get("duration"),
+                    "uploader": info.get("uploader", "Unknown"),
+                }
+
+            # Default handling: Provide best available format
             best = None
             for f in sorted(formats, key=lambda x: x.get("tbr") or 0, reverse=True):
                 if f.get("ext") in ["mp4", "m4a"] and f.get("url"):
