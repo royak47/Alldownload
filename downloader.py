@@ -8,45 +8,43 @@ app = Flask(__name__)
 
 MIN_YTDLP_VERSION = "2024.05.27"
 if version.parse(ydl_version) < version.parse(MIN_YTDLP_VERSION):
-    raise RuntimeError(
-        f"❌ yt-dlp version too old: {ydl_version}. Please upgrade to {MIN_YTDLP_VERSION} or newer using:\n\n  yt-dlp -U"
-    )
+    raise RuntimeError(f"❌ yt-dlp version too old: {ydl_version}. Please upgrade to {MIN_YTDLP_VERSION} or newer")
 
 COOKIES_FILE = "cookies.txt"
 
 def get_direct_video_url(link):
     try:
         ydl_opts = {
-            'quiet': True,
-            'skip_download': True,
-            'format': 'bestvideo+bestaudio/best',  # Combine best video and best audio
-            'noplaylist': True,  # Avoid playlist download
-            'outtmpl': '%(id)s.%(ext)s',  # Use video ID for filenames
+            "quiet": True,
+            "skip_download": True,
+            "noplaylist": True,
+            "cookiefile": COOKIES_FILE if os.path.exists(COOKIES_FILE) else None,
+            "format": "bv*[ext=mp4]+ba[ext=m4a]/best[ext=mp4]/best",
         }
-
-        if os.path.exists(COOKIES_FILE):
-            ydl_opts['cookiefile'] = COOKIES_FILE
 
         with YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(link, download=False)
+            formats = info.get("formats", [])
+            
+            # Try to get best combined video+audio with direct CDN-like URL
+            best = None
+            for f in sorted(formats, key=lambda x: x.get("tbr") or 0, reverse=True):
+                if f.get("ext") in ["mp4", "m4a"] and f.get("url") and not f.get("acodec") == "none":
+                    best = f
+                    break
 
-            # Check for different video formats (YouTube, Instagram)
-            if 'formats' in info:
-                formats = info.get("formats", [])
-                best_format = next((f for f in formats if f.get("ext") == "mp4" and f.get("url")), None)
-                direct_url = best_format["url"] if best_format else info.get("url")
-            else:
-                # If no formats list, use the direct URL (mostly for Instagram)
-                direct_url = info.get("url")
+            # Fallback if main url is available
+            final_url = best.get("url") if best else info.get("url")
 
             return {
                 "title": info.get("title", "Unknown"),
-                "url": direct_url,
+                "url": final_url,
                 "duration": info.get("duration"),
                 "uploader": info.get("uploader", "Unknown")
             }
+
     except Exception as e:
-        return {"error": str(e)}
+        return {"error": f"❌ Error: {str(e)}"}
 
 @app.route('/getlink', methods=['POST'])
 def get_link():
@@ -54,9 +52,8 @@ def get_link():
     url = data.get("url")
     if not url:
         return jsonify({"error": "Missing URL"}), 400
-    result = get_direct_video_url(url)
-    return jsonify(result)
+    return jsonify(get_direct_video_url(url))
 
+# Gunicorn-compatible: backend:app
 if __name__ == '__main__':
-    print(f"✅ yt-dlp version: {ydl_version}")
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
