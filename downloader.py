@@ -1,7 +1,7 @@
 import os
 from flask import Flask, request, jsonify
 from yt_dlp import YoutubeDL
-from yt_dlp.version import version as ydl_version  # ✅ Correct import
+import yt_dlp  # Import yt_dlp directly for version
 from packaging import version
 
 app = Flask(__name__)
@@ -10,9 +10,9 @@ app = Flask(__name__)
 MIN_YTDLP_VERSION = "2024.05.27"
 
 # 🔍 Check yt-dlp version
-if version.parse(ydl_version) < version.parse(MIN_YTDLP_VERSION):
+if version.parse(yt_dlp.__version__) < version.parse(MIN_YTDLP_VERSION):
     raise RuntimeError(
-        f"❌ yt-dlp version too old: {ydl_version}. Please upgrade to {MIN_YTDLP_VERSION} or newer using:\n\n  yt-dlp -U"
+        f"❌ yt-dlp version too old: {yt_dlp.__version__}. Please upgrade to {MIN_YTDLP_VERSION} or newer using:\n\n  yt-dlp -U"
     )
 
 # ✅ Optional cookies file (for Instagram etc.)
@@ -56,5 +56,5 @@ def get_link():
 
 # 🚀 Start Flask server
 if __name__ == '__main__':
-    print(f"✅ yt-dlp version: {ydl_version}")
+    print(f"✅ yt-dlp version: {yt_dlp.__version__}")
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
