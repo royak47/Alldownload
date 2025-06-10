@@ -21,14 +21,15 @@ COOKIES_FILE = "cookies.txt"
 # 🔽 Extract video info using yt-dlp
 def get_direct_video_url(link):
     try:
-        # Set yt-dlp options to select best video and audio quality
+        # Set yt-dlp options to select best available stream (works for HLS, YouTube, Instagram, etc.)
         ydl_opts = {
             'quiet': True,
             'skip_download': True,
-            'format': 'bestvideo+bestaudio/best',  # Selects the best video and best audio streams
+            'format': 'best',  # ✅ This will pick the best available video/audio, including HLS streams (Pinterest, Instagram)
+            # 'listformats': True,  # Use this for debugging (removable in production)
         }
 
-        # If cookies file exists, use it
+        # If cookies file exists, use it (for Instagram, etc.)
         if os.path.exists(COOKIES_FILE):
             ydl_opts['cookiefile'] = COOKIES_FILE
 
