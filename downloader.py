@@ -42,24 +42,34 @@ def get_direct_video_url(link):
         }
 
     elif platform == "pinterest":
-        # Optional: Clean query params
+        # Clean up Pinterest link if needed
         if "?" in link:
             link = link.split("?")[0]
 
         ydl_opts = {
             'quiet': True,
             'skip_download': True,
-            'format': 'best',
-            'force_generic_extractor': True,
+            'format': 'bestvideo+bestaudio/best',
+            'merge_output_format': 'mp4',
+            'force_generic_extractor': True
         }
 
         try:
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(link, download=False)
 
+                formats = info.get('formats', [])
+                best_format = None
+                for f in formats:
+                    if f.get('ext') == 'mp4' and f.get('acodec') != 'none' and f.get('vcodec') != 'none':
+                        if best_format is None or (f.get('tbr') or 0) > (best_format.get('tbr') or 0):
+                            best_format = f
+
+                final_url = best_format["url"] if best_format else info.get("url")
+
                 return {
                     "title": info.get("title", "Unknown"),
-                    "url": info.get("url"),
+                    "url": final_url,
                     "duration": info.get("duration"),
                     "uploader": info.get("uploader", "Unknown"),
                     "platform": platform
