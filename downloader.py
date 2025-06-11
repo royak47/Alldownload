@@ -42,11 +42,23 @@ def get_direct_video_url(link):
         }
 
     elif platform == "pinterest":
+        # Resolve pin.it redirect if needed
+        import requests
+        if "pin.it" in link:
+            try:
+                link = requests.head(link, allow_redirects=True, timeout=5).url
+            except Exception as e:
+                return {"error": f"❌ Failed to resolve pin.it link: {str(e)}"}
+
+        # Strip tracking params like ?invite_code=...
+        if "/pin/" in link and "?" in link:
+            link = link.split("?")[0]
+
         base_opts = {
             'quiet': True,
             'skip_download': True,
-            'format_sort': ['res', 'tbr'],
-            'format': 'V_HLSV3_MOBILE-1296/V_HLSV3_MOBILE-1026/V_HLSV3_MOBILE-735/best',
+            'format': 'best',
+            'force_generic_extractor': True,
         }
 
     else:  # X/Twitter or fallback
