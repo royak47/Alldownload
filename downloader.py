@@ -11,7 +11,7 @@ MIN_YTDLP_VERSION = "2024.05.27"
 if version.parse(ydl_version) < version.parse(MIN_YTDLP_VERSION):
     raise RuntimeError(f"yt-dlp >= {MIN_YTDLP_VERSION} required, found {ydl_version}")
 
-COOKIES_DIR = "cookies"  # Folder containing multiple .txt cookie files
+COOKIES_DIR = "cookies"  # Folder containing Instagram/YouTube cookie .txt files
 
 def get_platform(url: str) -> str:
     if "instagram.com" in url:
@@ -37,36 +37,40 @@ def expand_pinterest_short_link(link):
 def get_direct_video_url(link):
     platform = get_platform(link)
 
+    # 🎯 Pinterest logic (auto-expand and pick best format)
     if platform == "pinterest":
         link = expand_pinterest_short_link(link)
         ydl_opts = {
             'quiet': True,
             'skip_download': True,
-            'format': 'V_HLSV3_MOBILE-1296/V_HLSV3_MOBILE-1026/V_HLSV3_MOBILE-735/best',
-            'force_generic_extractor': False,
+            'force_generic_extractor': True,
         }
 
         try:
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(link, download=False)
                 formats = info.get("formats", [])
-                best = next(
-                    (
-                        f for f in formats
-                        if f.get("url") and f.get("ext") == "mp4" and f.get("vcodec") != "none"
-                    ),
-                    None,
-                )
+                best_format = None
 
-                if not best and info.get("url"):
-                    best = {"url": info["url"]}
+                for f in formats:
+                    if (
+                        f.get("url")
+                        and f.get("vcodec") != "none"
+                        and f.get("ext") in ["mp4", "m3u8"]
+                    ):
+                        if not best_format or (
+                            f["ext"] == "mp4" and best_format["ext"] != "mp4"
+                        ) or (
+                            (f.get("tbr") or 0) > (best_format.get("tbr") or 0)
+                        ):
+                            best_format = f
 
-                if not best:
+                if not best_format:
                     return {"error": "❌ No valid Pinterest video format found."}
 
                 return {
                     "title": info.get("title", "Unknown"),
-                    "url": best["url"],
+                    "url": best_format["url"],
                     "duration": info.get("duration"),
                     "uploader": info.get("uploader", "Unknown"),
                     "platform": platform
@@ -75,7 +79,7 @@ def get_direct_video_url(link):
         except Exception as e:
             return {"error": f"❌ Pinterest download failed: {str(e)}"}
 
-    # For Instagram and YouTube: use cookie rotation
+    # 🎯 Instagram / YouTube / X (with cookie rotation for IG + YT)
     base_opts = {
         'quiet': True,
         'skip_download': True,
@@ -113,7 +117,6 @@ def get_direct_video_url(link):
                             best_format = f
 
                 final_url = best_format["url"] if best_format else info.get("url")
-
                 if not final_url:
                     continue
 
