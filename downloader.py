@@ -44,6 +44,7 @@ def get_direct_video_url(link):
     elif platform == "pinterest":
         import requests
 
+        # Expand pin.it short links
         if "pin.it" in link:
             try:
                 r = requests.get(link, allow_redirects=True, timeout=5)
@@ -57,9 +58,9 @@ def get_direct_video_url(link):
         ydl_opts = {
             'quiet': True,
             'skip_download': True,
-            'format': 'best',
-            'merge_output_format': 'mp4',
             'force_generic_extractor': True,
+            'format': 'bestvideo+bestaudio/best',
+            'merge_output_format': 'mp4',
         }
 
         try:
@@ -67,22 +68,32 @@ def get_direct_video_url(link):
                 info = ydl.extract_info(link, download=False)
 
                 formats = info.get("formats") or []
-                preferred_format = None
+                best_url = None
 
+                # First priority: try to get direct MP4 with audio+video
                 for f in formats:
-                    tbr = f.get("tbr")
                     if (
                         f.get("url")
-                        and f.get("ext") in ["mp4", "m4a"]
+                        and f.get("ext") in ["mp4"]
                         and f.get("vcodec") != "none"
-                        and isinstance(tbr, (int, float))
+                        and f.get("acodec") != "none"
                     ):
-                        if not preferred_format or tbr > preferred_format.get("tbr", 0):
-                            preferred_format = f
+                        best_url = f["url"]
+                        break
+
+                # Second priority: fallback to highest quality video stream (e.g., HLS)
+                if not best_url:
+                    for f in formats:
+                        if f.get("url") and f.get("ext") in ["mp4", "m4a", "webm", "m3u8"]:
+                            best_url = f["url"]
+                            break
+
+                if not best_url:
+                    return {"error": "❌ No valid Pinterest video format found."}
 
                 return {
                     "title": info.get("title", "Unknown"),
-                    "url": preferred_format.get("url") if preferred_format else None,
+                    "url": best_url,
                     "duration": info.get("duration"),
                     "uploader": info.get("uploader", "Unknown"),
                     "platform": platform
