@@ -10,16 +10,7 @@ MIN_YTDLP_VERSION = "2024.05.27"
 if version.parse(ydl_version) < version.parse(MIN_YTDLP_VERSION):
     raise RuntimeError(f"yt-dlp >= {MIN_YTDLP_VERSION} required, found {ydl_version}")
 
-# --------- CONFIG ---------
-COOKIES_DIR = "cookies"  # All cookie files in this folder
-# --------------------------
-
-# Load all .txt cookie files from /cookies
-cookie_files = [
-    os.path.join(COOKIES_DIR, f)
-    for f in os.listdir(COOKIES_DIR)
-    if f.endswith(".txt")
-]
+COOKIES_DIR = "cookies"  # Folder containing multiple .txt cookie files
 
 def get_platform(url: str) -> str:
     if "instagram.com" in url:
@@ -35,13 +26,49 @@ def get_platform(url: str) -> str:
 def get_direct_video_url(link):
     platform = get_platform(link)
 
-    for cookie_file in cookie_files + [None]:  # Try all cookies + fallback to no cookies
-        ydl_opts = {
+    if platform == "youtube":
+        base_opts = {
+            'quiet': True,
+            'skip_download': True,
+            'format': 'bv*+ba/best[ext=mp4]/best',
+            'noplaylist': True
+        }
+
+    elif platform == "instagram":
+        base_opts = {
             'quiet': True,
             'skip_download': True,
             'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
         }
 
+    elif platform == "pinterest":
+        base_opts = {
+            'quiet': True,
+            'skip_download': True,
+            'format_sort': ['res', 'tbr'],
+            'format': 'V_HLSV3_MOBILE-1296/V_HLSV3_MOBILE-1026/V_HLSV3_MOBILE-735/best',
+        }
+
+    else:  # X/Twitter or fallback
+        base_opts = {
+            'quiet': True,
+            'skip_download': True,
+            'format': 'best[ext=mp4]/best',
+        }
+
+    # Collect cookie files
+    cookie_files = []
+    cookies_folder = COOKIES_DIR
+    if os.path.exists(cookies_folder):
+        cookie_files = [
+            os.path.join(cookies_folder, f)
+            for f in os.listdir(cookies_folder)
+            if f.endswith(".txt")
+        ]
+
+    # Try all cookie files + None (for fallback)
+    for cookie_file in cookie_files + [None]:
+        ydl_opts = base_opts.copy()
         if cookie_file:
             ydl_opts['cookiefile'] = cookie_file
 
@@ -52,12 +79,7 @@ def get_direct_video_url(link):
                 formats = info.get('formats', [])
                 best_format = None
                 for f in formats:
-                    if (
-                        f.get('ext') == 'mp4'
-                        and f.get('acodec') != 'none'
-                        and f.get('vcodec') != 'none'
-                        and f.get('url')
-                    ):
+                    if f.get('ext') == 'mp4' and f.get('acodec') != 'none' and f.get('vcodec') != 'none' and f.get('url'):
                         if best_format is None or (f.get("tbr") or 0) > (best_format.get("tbr") or 0):
                             best_format = f
 
@@ -75,7 +97,7 @@ def get_direct_video_url(link):
             print(f"[{cookie_file}] failed: {e}")
             continue  # Try next cookie
 
-    return {"error": "❌ Failed using all cookie files."}
+    return {"error": "❌ Error: Failed using all cookie files."}
 
 @app.route('/getlink', methods=['POST'])
 def get_link():
