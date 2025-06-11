@@ -42,13 +42,19 @@ def get_direct_video_url(link):
         }
 
     elif platform == "pinterest":
-        if "?" in link:
-            link = link.split("?")[0]
+        # Expand shortened pin.it links
+        import requests
+        if "pin.it" in link:
+            try:
+                r = requests.get(link, allow_redirects=True, timeout=5)
+                link = r.url.split("?")[0]
+            except Exception as e:
+                return {"error": f"❌ Pinterest redirect failed: {str(e)}"}
 
         ydl_opts = {
             'quiet': True,
             'skip_download': True,
-            'format': 'bestvideo+bestaudio/best',
+            'format': 'best',
             'merge_output_format': 'mp4',
             'force_generic_extractor': True,
         }
@@ -59,21 +65,23 @@ def get_direct_video_url(link):
 
                 formats = info.get("formats", [])
                 best_format = None
+
+                # Safely pick best working MP4 format
                 for f in formats:
                     if (
-                        f.get("ext") == "mp4"
-                        and f.get("acodec") != "none"
+                        f.get("url")
+                        and f.get("ext") in ["mp4", "m4a"]
                         and f.get("vcodec") != "none"
-                        and f.get("url")
                     ):
                         if best_format is None or (f.get("tbr") or 0) > (best_format.get("tbr") or 0):
                             best_format = f
 
-                final_url = best_format["url"] if best_format else None
+                if not best_format:
+                    return {"error": "❌ No valid format found for Pinterest video."}
 
                 return {
                     "title": info.get("title", "Unknown"),
-                    "url": final_url,
+                    "url": best_format["url"],
                     "duration": info.get("duration"),
                     "uploader": info.get("uploader", "Unknown"),
                     "platform": platform
@@ -81,7 +89,6 @@ def get_direct_video_url(link):
 
         except Exception as e:
             return {"error": f"❌ Pinterest download failed: {str(e)}"}
-
         try:
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(link, download=False)
