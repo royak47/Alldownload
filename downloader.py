@@ -46,57 +46,60 @@ def get_platform(url: str) -> str:
 def get_direct_video_url(link):
     platform = get_platform(link)
 
-    base_opts = {
-        'quiet': True,
-        'skip_download': True,
-    }
+    # Read proxies from proxy.txt
+    proxies = []
+    if os.path.exists("proxy.txt"):
+        with open("proxy.txt", "r") as f:
+            proxies = [line.strip() for line in f if line.strip()]
 
-    if PROXIES:
-        base_opts['proxy'] = random.choice(PROXIES)
+    # If no proxy found, add None (to attempt without proxy as fallback)
+    proxies.append(None)
 
-    # Platform-specific format handling
-    if platform == "youtube":
-        base_opts['format'] = 'bv*+ba/best[ext=mp4]/best'
-        base_opts['noplaylist'] = True
-    elif platform == "instagram":
-        base_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
-    elif platform == "pinterest":
-        base_opts['format_sort'] = ['res', 'tbr']
-        base_opts['format'] = 'V_HLSV3_MOBILE-1296/V_HLSV3_MOBILE-1026/V_HLSV3_MOBILE-735/best'
-    else:
-        base_opts['format'] = 'best[ext=mp4]/best'
+    for proxy in proxies:
+        ydl_opts = {
+            'quiet': True,
+            'skip_download': True,
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        }
 
-    # Try with all cookie files
-    candidates = cookie_files or [None]
-    last_error = "No attempts made"
+        if proxy:
+            ydl_opts['proxy'] = proxy
 
-    for cookie_file in candidates:
-        ydl_opts = base_opts.copy()
-        if cookie_file:
-            ydl_opts['cookiefile'] = cookie_file
+        if os.path.exists(COOKIES_FILE):
+            ydl_opts['cookiefile'] = COOKIES_FILE
 
         try:
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(link, download=False)
 
-                formats = info.get("formats", [])
-                best = None
+                formats = info.get('formats', [])
+                best_format = None
                 for f in formats:
-                    if f.get("ext") == "mp4" and f.get("acodec") != "none" and f.get("vcodec") != "none":
-                        if not best or (f.get("tbr") or 0) > (best.get("tbr") or 0):
-                            best = f
+                    if (
+                        f.get('ext') == 'mp4'
+                        and f.get('acodec') != 'none'
+                        and f.get('vcodec') != 'none'
+                        and f.get('url')
+                    ):
+                        if best_format is None or (f.get("tbr") or 0) > (best_format.get("tbr") or 0):
+                            best_format = f
+
+                final_url = best_format["url"] if best_format else info.get("url")
 
                 return {
                     "title": info.get("title", "Unknown"),
-                    "url": best["url"] if best else info.get("url"),
+                    "url": final_url,
                     "duration": info.get("duration"),
                     "uploader": info.get("uploader", "Unknown"),
                     "platform": platform
                 }
-        except Exception as e:
-            last_error = str(e)
 
-    return {"error": f"❌ Failed using all cookie files. Last error: {last_error}"}
+        except Exception as e:
+            print(f"[{proxy}] failed: {e}")
+            continue  # Try next proxy
+
+    # If all proxies failed
+    return {"error": "❌ Failed using all proxy servers or cookies."}
 
 @app.route('/getlink', methods=['POST'])
 def get_link():
