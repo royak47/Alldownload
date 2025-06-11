@@ -44,7 +44,6 @@ def get_direct_video_url(link):
     elif platform == "pinterest":
         import requests
 
-        # Handle pin.it short links
         if "pin.it" in link:
             try:
                 r = requests.get(link, allow_redirects=True, timeout=5)
@@ -68,20 +67,22 @@ def get_direct_video_url(link):
                 info = ydl.extract_info(link, download=False)
 
                 formats = info.get("formats") or []
-                best_format = None
+                preferred_format = None
 
                 for f in formats:
+                    tbr = f.get("tbr")
                     if (
                         f.get("url")
                         and f.get("ext") in ["mp4", "m4a"]
                         and f.get("vcodec") != "none"
+                        and isinstance(tbr, (int, float))
                     ):
-                        if not best_format or (f.get("tbr") or 0) > (best_format.get("tbr") or 0):
-                            best_format = f
+                        if not preferred_format or tbr > preferred_format.get("tbr", 0):
+                            preferred_format = f
 
                 return {
                     "title": info.get("title", "Unknown"),
-                    "url": best_format.get("url") if best_format else None,
+                    "url": preferred_format.get("url") if preferred_format else None,
                     "duration": info.get("duration"),
                     "uploader": info.get("uploader", "Unknown"),
                     "platform": platform
@@ -89,6 +90,7 @@ def get_direct_video_url(link):
 
         except Exception as e:
             return {"error": f"❌ Pinterest download failed: {str(e)}"}
+
     # Collect cookie files
     cookie_files = []
     cookies_folder = COOKIES_DIR
@@ -99,7 +101,6 @@ def get_direct_video_url(link):
             if f.endswith(".txt")
         ]
 
-    # Try all cookie files + None (for fallback)
     for cookie_file in cookie_files + [None]:
         ydl_opts = base_opts.copy()
         if cookie_file:
@@ -128,7 +129,7 @@ def get_direct_video_url(link):
 
         except Exception as e:
             print(f"[{cookie_file}] failed: {e}")
-            continue  # Try next cookie
+            continue
 
     return {"error": "❌ Error: Failed using all cookie files."}
 
