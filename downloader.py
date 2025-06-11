@@ -42,12 +42,48 @@ def get_direct_video_url(link):
         }
 
     elif platform == "pinterest":
-        base_opts = {
+        # Handle short pin.it links
+        if "pin.it" in link:
+            expanded = expand_pin_it_link(link)
+            if not expanded:
+                return {
+                    "error": "❌ Failed to expand Pinterest short link. Please open it and paste the full Pinterest URL."
+                }
+            link = expanded
+
+        ydl_opts = {
             'quiet': True,
             'skip_download': True,
-            'format_sort': ['res', 'tbr'],
-            'format': 'V_HLSV3_MOBILE-1296/V_HLSV3_MOBILE-1026/V_HLSV3_MOBILE-735/best',
+            'force_generic_extractor': True,  # This is KEY
+            'format': 'bestvideo+bestaudio/best',
+            'merge_output_format': 'mp4',
         }
+
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(link, download=False)
+                formats = info.get("formats") or []
+                best_url = None
+
+                # Look for mp4/hls stream with audio+video
+                for f in formats:
+                    if f.get("url") and f.get("vcodec") != "none":
+                        best_url = f["url"]
+                        break
+
+                if not best_url:
+                    return {"error": "❌ No valid Pinterest video format found."}
+
+                return {
+                    "title": info.get("title", "Unknown"),
+                    "url": best_url,
+                    "duration": info.get("duration"),
+                    "uploader": info.get("uploader", "Unknown"),
+                    "platform": platform
+                }
+
+        except Exception as e:
+            return {"error": f"❌ Pinterest download failed: {str(e)}"}
 
     else:  # x.com or generic
         base_opts = {
