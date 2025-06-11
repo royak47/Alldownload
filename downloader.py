@@ -88,12 +88,12 @@ def get_direct_video_url(link):
     }
 
     cookie_files = []
-    if os.path.exists(COOKIES_DIR):
-        cookie_files = [
-            os.path.join(COOKIES_DIR, f)
-            for f in os.listdir(COOKIES_DIR)
-            if f.endswith(".txt")
-        ]
+if os.path.exists(COOKIES_DIR):
+    for f in os.listdir(COOKIES_DIR):
+        if platform == "instagram" and f.startswith("insta_") and f.endswith(".txt"):
+            cookie_files.append(os.path.join(COOKIES_DIR, f))
+        elif platform == "youtube" and f.startswith("yt_") and f.endswith(".txt"):
+            cookie_files.append(os.path.join(COOKIES_DIR, f))
 
     for cookie_file in cookie_files + [None]:
         ydl_opts = base_opts.copy()
