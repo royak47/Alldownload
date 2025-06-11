@@ -1,4 +1,5 @@
 import os
+import random
 from flask import Flask, request, jsonify
 from yt_dlp import YoutubeDL
 from yt_dlp.version import __version__ as ydl_version
@@ -10,7 +11,26 @@ MIN_YTDLP_VERSION = "2024.05.27"
 if version.parse(ydl_version) < version.parse(MIN_YTDLP_VERSION):
     raise RuntimeError(f"yt-dlp >= {MIN_YTDLP_VERSION} required, found {ydl_version}")
 
-COOKIES_FILE = "cookies.txt"
+# --------- CONFIG ---------
+COOKIES_DIR = "cookies"
+PROXY_FILE = "proxy.txt"
+# --------------------------
+
+# Load all .txt cookie files from /cookies
+cookie_files = [
+    os.path.join(COOKIES_DIR, f)
+    for f in os.listdir(COOKIES_DIR)
+    if f.endswith(".txt")
+]
+
+# Load proxies from proxy.txt
+def load_proxies():
+    if not os.path.exists(PROXY_FILE):
+        return []
+    with open(PROXY_FILE, "r") as f:
+        return [line.strip() for line in f if line.strip()]
+
+PROXIES = load_proxies()
 
 def get_platform(url: str) -> str:
     if "instagram.com" in url:
@@ -26,63 +46,57 @@ def get_platform(url: str) -> str:
 def get_direct_video_url(link):
     platform = get_platform(link)
 
+    base_opts = {
+        'quiet': True,
+        'skip_download': True,
+    }
+
+    if PROXIES:
+        base_opts['proxy'] = random.choice(PROXIES)
+
+    # Platform-specific format handling
     if platform == "youtube":
-        ydl_opts = {
-            'quiet': True,
-            'skip_download': True,
-            'format': 'bv*+ba/best[ext=mp4]/best',
-            'noplaylist': True
-        }
-
+        base_opts['format'] = 'bv*+ba/best[ext=mp4]/best'
+        base_opts['noplaylist'] = True
     elif platform == "instagram":
-        ydl_opts = {
-            'quiet': True,
-            'skip_download': True,
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        }
-
+        base_opts['format'] = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
     elif platform == "pinterest":
-        ydl_opts = {
-            'quiet': True,
-            'skip_download': True,
-            'format_sort': ['res', 'tbr'],
-            'format': 'V_HLSV3_MOBILE-1296/V_HLSV3_MOBILE-1026/V_HLSV3_MOBILE-735/best',
-        }
+        base_opts['format_sort'] = ['res', 'tbr']
+        base_opts['format'] = 'V_HLSV3_MOBILE-1296/V_HLSV3_MOBILE-1026/V_HLSV3_MOBILE-735/best'
+    else:
+        base_opts['format'] = 'best[ext=mp4]/best'
 
-    else:  # X/Twitter or fallback
-        ydl_opts = {
-            'quiet': True,
-            'skip_download': True,
-            'format': 'best[ext=mp4]/best',
-        }
+    # Try with all cookie files
+    candidates = cookie_files or [None]
+    last_error = "No attempts made"
 
-    if os.path.exists(COOKIES_FILE):
-        ydl_opts['cookiefile'] = COOKIES_FILE
+    for cookie_file in candidates:
+        ydl_opts = base_opts.copy()
+        if cookie_file:
+            ydl_opts['cookiefile'] = cookie_file
 
-    try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(link, download=False)
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(link, download=False)
 
-            # Try best quality format with audio+video
-            formats = info.get('formats', [])
-            best_format = None
-            for f in formats:
-                if f.get('ext') == 'mp4' and f.get('acodec') != 'none' and f.get('vcodec') != 'none' and f.get('url'):
-                    if best_format is None or (f.get("tbr") or 0) > (best_format.get("tbr") or 0):
-                        best_format = f
+                formats = info.get("formats", [])
+                best = None
+                for f in formats:
+                    if f.get("ext") == "mp4" and f.get("acodec") != "none" and f.get("vcodec") != "none":
+                        if not best or (f.get("tbr") or 0) > (best.get("tbr") or 0):
+                            best = f
 
-            final_url = best_format["url"] if best_format else info.get("url")
+                return {
+                    "title": info.get("title", "Unknown"),
+                    "url": best["url"] if best else info.get("url"),
+                    "duration": info.get("duration"),
+                    "uploader": info.get("uploader", "Unknown"),
+                    "platform": platform
+                }
+        except Exception as e:
+            last_error = str(e)
 
-            return {
-                "title": info.get("title", "Unknown"),
-                "url": final_url,
-                "duration": info.get("duration"),
-                "uploader": info.get("uploader", "Unknown"),
-                "platform": platform
-            }
-
-    except Exception as e:
-        return {"error": f"❌ Error: {str(e)}"}
+    return {"error": f"❌ Failed using all cookie files. Last error: {last_error}"}
 
 @app.route('/getlink', methods=['POST'])
 def get_link():
