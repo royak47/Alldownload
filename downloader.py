@@ -42,30 +42,31 @@ def get_direct_video_url(link):
         ydl_opts = {
             'quiet': True,
             'skip_download': True,
-            'force_generic_extractor': True,
+            'format': 'V_HLSV3_MOBILE-1296/V_HLSV3_MOBILE-1026/V_HLSV3_MOBILE-735/best',
+            'force_generic_extractor': False,
         }
 
         try:
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(link, download=False)
-
                 formats = info.get("formats", [])
-                best_url = None
+                best = next(
+                    (
+                        f for f in formats
+                        if f.get("url") and f.get("ext") == "mp4" and f.get("vcodec") != "none"
+                    ),
+                    None,
+                )
 
-                for f in formats:
-                    if f.get("url") and f.get("ext") in ["mp4", "m3u8"] and f.get("vcodec") != "none":
-                        best_url = f["url"]
-                        break
+                if not best and info.get("url"):
+                    best = {"url": info["url"]}
 
-                if not best_url and info.get("url"):
-                    best_url = info.get("url")
-
-                if not best_url:
+                if not best:
                     return {"error": "❌ No valid Pinterest video format found."}
 
                 return {
                     "title": info.get("title", "Unknown"),
-                    "url": best_url,
+                    "url": best["url"],
                     "duration": info.get("duration"),
                     "uploader": info.get("uploader", "Unknown"),
                     "platform": platform
@@ -98,7 +99,6 @@ def get_direct_video_url(link):
         try:
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(link, download=False)
-
                 formats = info.get("formats", [])
                 best_format = None
 
