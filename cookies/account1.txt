@@ -1,0 +1,30 @@
+# Netscape HTTP Cookie File
+# http://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file!  Do not edit.
+
+.youtube.com	TRUE	/	TRUE	1784169253	PREF	f6=40000000&tz=Asia.Calcutta
+.youtube.com	TRUE	/	TRUE	1780972176	__Secure-1PSIDTS	sidts-CjEB5H03P-1RkLKj4K8PASj7FLBF7-2eAqfDsmLKpBMpQ4fSaHH4pbVgenty1FAb42iEEAA
+.youtube.com	TRUE	/	TRUE	1780972176	__Secure-3PSIDTS	sidts-CjEB5H03P-1RkLKj4K8PASj7FLBF7-2eAqfDsmLKpBMpQ4fSaHH4pbVgenty1FAb42iEEAA
+.youtube.com	TRUE	/	TRUE	1783996176	__Secure-3PAPISID	N5eT6_fuUSdHds7x/AO1BM8J0OSq4MPguu
+.youtube.com	TRUE	/	TRUE	1783996176	__Secure-3PSID	g.a000xgjG3lG1SCiZTyTKskiNuYLqQ-ge9As4a3gnyRMbTWOQmrriOkK9gan9Ic0BewfHOBh-xgACgYKAVQSARQSFQHGX2Miu8eShxGcTJHuVtlzm-gOTBoVAUF8yKpCrLYszuD8OJ1udF0axyC80076
+.youtube.com	TRUE	/	TRUE	1783996176	LOGIN_INFO	AFmmF2swRgIhAIPRwvw-_cnS3lhdyGk9kG26Dw8Xa06hoV36iKpJpWeJAiEAlsJdS4G1spzrLEj0ZQXXy16v5uWbimjxyNmNJsQdqrc:QUQ3MjNmdzBsNVBSa2UtdjNlZGF1UmU0bTJ5YXBQdFVmOUcyUVoyMXE2bFhyTFVpcFVzSmtud1pJdTVXeWZhbE9jUWMteFdPTWJnSkU0VW5RUUJ6MXg0VXdHOFpMY0FvN19yNUJ2Y2JtalZ4dXU1ZTMzbXVJcHo0VW84R0lKelVQVlVCRWo2Smx6U0stZGRsaTllcnpDN1dDNFVMLUpEaUln
+.youtube.com	TRUE	/	TRUE	1781145261	__Secure-3PSIDCC	AKEyXzUfzaM2ogF_HEwAZF9T3_kD7tf4rKoFG6gFxYzRpk-rqmupmFT-7bOlmc-eVOK7IfWHiA
+.youtube.com	TRUE	/	TRUE	1765161246	VISITOR_INFO1_LIVE	Rq1KtfVhcB8
+.youtube.com	TRUE	/	TRUE	1765161246	VISITOR_PRIVACY_METADATA	CgJJThIEGgAgEA%3D%3D
+.youtube.com	TRUE	/	TRUE	0	YSC	jDEtc0O_1-I
+.youtube.com	TRUE	/	TRUE	1765161246	__Secure-ROLLOUT_TOKEN	CLWpndfLqu7xdRD09uLUn5-LAxjb-Z6tquiNAw%3D%3D
+# Netscape HTTP Cookie File
+# http://curl.haxx.se/rfc/cookie_spec.html
+# This is a generated file!  Do not edit.
+
+.instagram.com	TRUE	/	TRUE	1749805867	dpr	3
+.instagram.com	TRUE	/	TRUE	1783761044	mid	aEKwhwABAAES94_e7sUq--aaornS
+.instagram.com	TRUE	/	TRUE	1783761045	datr	h7BCaKXsKQKcDch6G1_Zx4Ls
+.instagram.com	TRUE	/	TRUE	1780737046	ig_did	E83B4557-C8D3-41BB-8864-80B284AC71BB
+.instagram.com	TRUE	/	TRUE	1780737046	ig_nrcb	1
+.instagram.com	TRUE	/	TRUE	1784169420	csrftoken	9r4xRdR85VsVJpHMMVuy58C24tdHpqjp
+.instagram.com	TRUE	/	TRUE	1757385420	ds_user_id	68854653052
+.instagram.com	TRUE	/	TRUE	1781145110	sessionid	68854653052%3Ao31xrz1EvoVi5x%3A1%3AAYcgC0eFmu5J4l_UWoq9OMh-QHoRYPib4L8BOiWZbw
+.instagram.com	TRUE	/	TRUE	1750214207	wd	360x648
+.instagram.com	TRUE	/	TRUE	0	rur	"PRN\05468854653052\0541781145421:01fe22e51b03e7748400e723648034ac8670c9759b07c3849454b228938e4afed346afb0"
+  
