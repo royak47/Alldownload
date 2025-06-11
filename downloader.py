@@ -1,5 +1,4 @@
 import os
-import random
 from flask import Flask, request, jsonify
 from yt_dlp import YoutubeDL
 from yt_dlp.version import __version__ as ydl_version
@@ -11,26 +10,7 @@ MIN_YTDLP_VERSION = "2024.05.27"
 if version.parse(ydl_version) < version.parse(MIN_YTDLP_VERSION):
     raise RuntimeError(f"yt-dlp >= {MIN_YTDLP_VERSION} required, found {ydl_version}")
 
-# --------- CONFIG ---------
-COOKIES_DIR = "cookies"
-PROXY_FILE = "proxy.txt"
-# --------------------------
-
-# Load all .txt cookie files from /cookies
-cookie_files = [
-    os.path.join(COOKIES_DIR, f)
-    for f in os.listdir(COOKIES_DIR)
-    if f.endswith(".txt")
-]
-
-# Load proxies from proxy.txt
-def load_proxies():
-    if not os.path.exists(PROXY_FILE):
-        return []
-    with open(PROXY_FILE, "r") as f:
-        return [line.strip() for line in f if line.strip()]
-
-PROXIES = load_proxies()
+COOKIES_FILE = "cookies/cookies.txt"  # Adjust this path if needed
 
 def get_platform(url: str) -> str:
     if "instagram.com" in url:
@@ -46,60 +26,43 @@ def get_platform(url: str) -> str:
 def get_direct_video_url(link):
     platform = get_platform(link)
 
-    # Read proxies from proxy.txt
-    proxies = []
-    if os.path.exists("proxy.txt"):
-        with open("proxy.txt", "r") as f:
-            proxies = [line.strip() for line in f if line.strip()]
+    ydl_opts = {
+        'quiet': True,
+        'skip_download': True,
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+    }
 
-    # If no proxy found, add None (to attempt without proxy as fallback)
-    proxies.append(None)
+    if os.path.exists(COOKIES_FILE):
+        ydl_opts['cookiefile'] = COOKIES_FILE
 
-    for proxy in proxies:
-        ydl_opts = {
-            'quiet': True,
-            'skip_download': True,
-            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-        }
+    try:
+        with YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(link, download=False)
 
-        if proxy:
-            ydl_opts['proxy'] = proxy
+            formats = info.get('formats', [])
+            best_format = None
+            for f in formats:
+                if (
+                    f.get('ext') == 'mp4'
+                    and f.get('acodec') != 'none'
+                    and f.get('vcodec') != 'none'
+                    and f.get('url')
+                ):
+                    if best_format is None or (f.get("tbr") or 0) > (best_format.get("tbr") or 0):
+                        best_format = f
 
-        if os.path.exists(COOKIES_FILE):
-            ydl_opts['cookiefile'] = COOKIES_FILE
+            final_url = best_format["url"] if best_format else info.get("url")
 
-        try:
-            with YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(link, download=False)
+            return {
+                "title": info.get("title", "Unknown"),
+                "url": final_url,
+                "duration": info.get("duration"),
+                "uploader": info.get("uploader", "Unknown"),
+                "platform": platform
+            }
 
-                formats = info.get('formats', [])
-                best_format = None
-                for f in formats:
-                    if (
-                        f.get('ext') == 'mp4'
-                        and f.get('acodec') != 'none'
-                        and f.get('vcodec') != 'none'
-                        and f.get('url')
-                    ):
-                        if best_format is None or (f.get("tbr") or 0) > (best_format.get("tbr") or 0):
-                            best_format = f
-
-                final_url = best_format["url"] if best_format else info.get("url")
-
-                return {
-                    "title": info.get("title", "Unknown"),
-                    "url": final_url,
-                    "duration": info.get("duration"),
-                    "uploader": info.get("uploader", "Unknown"),
-                    "platform": platform
-                }
-
-        except Exception as e:
-            print(f"[{proxy}] failed: {e}")
-            continue  # Try next proxy
-
-    # If all proxies failed
-    return {"error": "❌ Failed using all proxy servers or cookies."}
+    except Exception as e:
+        return {"error": f"❌ Error: {str(e)}"}
 
 @app.route('/getlink', methods=['POST'])
 def get_link():
