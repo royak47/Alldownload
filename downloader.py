@@ -17,7 +17,7 @@ def get_platform(url: str) -> str:
         return "instagram"
     elif "youtube.com" in url or "youtu.be" in url:
         return "youtube"
-    elif "pinterest.com" in url:
+    elif "pinterest.com" in url or "pin.it" in url:
         return "pinterest"
     elif "x.com" in url or "twitter.com" in url:
         return "x"
@@ -42,16 +42,8 @@ def get_direct_video_url(link):
         }
 
     elif platform == "pinterest":
-        # Resolve pin.it redirect if needed
-        import requests
-        if "pin.it" in link:
-            try:
-                link = requests.head(link, allow_redirects=True, timeout=5).url
-            except Exception as e:
-                return {"error": f"❌ Failed to resolve pin.it link: {str(e)}"}
-
-        # Strip tracking parameters (optional cleanup)
-        if "/pin/" in link and "?" in link:
+        # Optional: Clean query params
+        if "?" in link:
             link = link.split("?")[0]
 
         ydl_opts = {
@@ -60,6 +52,21 @@ def get_direct_video_url(link):
             'format': 'best',
             'force_generic_extractor': True,
         }
+
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(link, download=False)
+
+                return {
+                    "title": info.get("title", "Unknown"),
+                    "url": info.get("url"),
+                    "duration": info.get("duration"),
+                    "uploader": info.get("uploader", "Unknown"),
+                    "platform": platform
+                }
+
+        except Exception as e:
+            return {"error": f"❌ Pinterest download failed: {str(e)}"}
 
         try:
             with YoutubeDL(ydl_opts) as ydl:
