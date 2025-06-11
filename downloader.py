@@ -11,7 +11,7 @@ MIN_YTDLP_VERSION = "2024.05.27"
 if version.parse(ydl_version) < version.parse(MIN_YTDLP_VERSION):
     raise RuntimeError(f"yt-dlp >= {MIN_YTDLP_VERSION} required, found {ydl_version}")
 
-COOKIES_DIR = "cookies"  # Folder containing Instagram/YouTube cookie .txt files
+COOKIES_DIR = "cookies"  # Folder containing .txt cookie files like insta_*.txt and yt_*.txt
 
 def get_platform(url: str) -> str:
     if "instagram.com" in url:
@@ -37,7 +37,6 @@ def expand_pinterest_short_link(link):
 def get_direct_video_url(link):
     platform = get_platform(link)
 
-    # 🎯 Pinterest logic (auto-expand and pick best format)
     if platform == "pinterest":
         link = expand_pinterest_short_link(link)
         ydl_opts = {
@@ -50,27 +49,22 @@ def get_direct_video_url(link):
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(link, download=False)
                 formats = info.get("formats", [])
-                best_format = None
+                best_url = None
 
-                for f in formats:
-                    if (
-                        f.get("url")
-                        and f.get("vcodec") != "none"
-                        and f.get("ext") in ["mp4", "m3u8"]
-                    ):
-                        if not best_format or (
-                            f["ext"] == "mp4" and best_format["ext"] != "mp4"
-                        ) or (
-                            (f.get("tbr") or 0) > (best_format.get("tbr") or 0)
-                        ):
-                            best_format = f
+                for f in sorted(formats, key=lambda x: (x.get("tbr") or 0), reverse=True):
+                    if f.get("url") and f.get("vcodec") != "none":
+                        best_url = f["url"]
+                        break
 
-                if not best_format:
+                if not best_url and info.get("url"):
+                    best_url = info.get("url")
+
+                if not best_url:
                     return {"error": "❌ No valid Pinterest video format found."}
 
                 return {
                     "title": info.get("title", "Unknown"),
-                    "url": best_format["url"],
+                    "url": best_url,
                     "duration": info.get("duration"),
                     "uploader": info.get("uploader", "Unknown"),
                     "platform": platform
@@ -79,7 +73,9 @@ def get_direct_video_url(link):
         except Exception as e:
             return {"error": f"❌ Pinterest download failed: {str(e)}"}
 
-    # 🎯 Instagram / YouTube / X (with cookie rotation for IG + YT)
+    # ------------------------------
+    # Instagram or YouTube (with cookies)
+    # ------------------------------
     base_opts = {
         'quiet': True,
         'skip_download': True,
@@ -87,18 +83,19 @@ def get_direct_video_url(link):
         'noplaylist': True
     }
 
+    cookie_filter = "insta_" if platform == "instagram" else "yt_" if platform == "youtube" else ""
     cookie_files = []
-if os.path.exists(COOKIES_DIR):
-    for f in os.listdir(COOKIES_DIR):
-        if platform == "instagram" and f.startswith("insta_") and f.endswith(".txt"):
-            cookie_files.append(os.path.join(COOKIES_DIR, f))
-        elif platform == "youtube" and f.startswith("yt_") and f.endswith(".txt"):
-            cookie_files.append(os.path.join(COOKIES_DIR, f))
 
-    for cookie_file in cookie_files + [None]:
+    if os.path.exists(COOKIES_DIR):
+        cookie_files = [
+            os.path.join(COOKIES_DIR, f)
+            for f in os.listdir(COOKIES_DIR)
+            if f.endswith(".txt") and f.startswith(cookie_filter)
+        ]
+
+    for cookie_file in cookie_files:
         ydl_opts = base_opts.copy()
-        if cookie_file:
-            ydl_opts["cookiefile"] = cookie_file
+        ydl_opts["cookiefile"] = cookie_file
 
         try:
             with YoutubeDL(ydl_opts) as ydl:
@@ -117,6 +114,7 @@ if os.path.exists(COOKIES_DIR):
                             best_format = f
 
                 final_url = best_format["url"] if best_format else info.get("url")
+
                 if not final_url:
                     continue
 
