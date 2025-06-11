@@ -50,24 +50,29 @@ def get_direct_video_url(link):
             except Exception as e:
                 return {"error": f"❌ Failed to resolve pin.it link: {str(e)}"}
 
-        # Strip tracking params like ?invite_code=...
+        # Strip tracking parameters (optional cleanup)
         if "/pin/" in link and "?" in link:
             link = link.split("?")[0]
 
-        base_opts = {
+        ydl_opts = {
             'quiet': True,
             'skip_download': True,
             'format': 'best',
             'force_generic_extractor': True,
         }
 
-    else:  # X/Twitter or fallback
-        base_opts = {
-            'quiet': True,
-            'skip_download': True,
-            'format': 'best[ext=mp4]/best',
-        }
-
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(link, download=False)
+                return {
+                    "title": info.get("title", "Unknown"),
+                    "url": info.get("url"),
+                    "duration": info.get("duration"),
+                    "uploader": info.get("uploader", "Unknown"),
+                    "platform": platform
+                }
+        except Exception as e:
+            return {"error": f"❌ Pinterest download failed: {str(e)}"}
     # Collect cookie files
     cookie_files = []
     cookies_folder = COOKIES_DIR
