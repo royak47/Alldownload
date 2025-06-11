@@ -10,7 +10,16 @@ MIN_YTDLP_VERSION = "2024.05.27"
 if version.parse(ydl_version) < version.parse(MIN_YTDLP_VERSION):
     raise RuntimeError(f"yt-dlp >= {MIN_YTDLP_VERSION} required, found {ydl_version}")
 
-COOKIES_FILE = "cookies/cookies.txt"  # Adjust this path if needed
+# --------- CONFIG ---------
+COOKIES_DIR = "cookies"  # All cookie files in this folder
+# --------------------------
+
+# Load all .txt cookie files from /cookies
+cookie_files = [
+    os.path.join(COOKIES_DIR, f)
+    for f in os.listdir(COOKIES_DIR)
+    if f.endswith(".txt")
+]
 
 def get_platform(url: str) -> str:
     if "instagram.com" in url:
@@ -26,43 +35,47 @@ def get_platform(url: str) -> str:
 def get_direct_video_url(link):
     platform = get_platform(link)
 
-    ydl_opts = {
-        'quiet': True,
-        'skip_download': True,
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-    }
+    for cookie_file in cookie_files + [None]:  # Try all cookies + fallback to no cookies
+        ydl_opts = {
+            'quiet': True,
+            'skip_download': True,
+            'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        }
 
-    if os.path.exists(COOKIES_FILE):
-        ydl_opts['cookiefile'] = COOKIES_FILE
+        if cookie_file:
+            ydl_opts['cookiefile'] = cookie_file
 
-    try:
-        with YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(link, download=False)
+        try:
+            with YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(link, download=False)
 
-            formats = info.get('formats', [])
-            best_format = None
-            for f in formats:
-                if (
-                    f.get('ext') == 'mp4'
-                    and f.get('acodec') != 'none'
-                    and f.get('vcodec') != 'none'
-                    and f.get('url')
-                ):
-                    if best_format is None or (f.get("tbr") or 0) > (best_format.get("tbr") or 0):
-                        best_format = f
+                formats = info.get('formats', [])
+                best_format = None
+                for f in formats:
+                    if (
+                        f.get('ext') == 'mp4'
+                        and f.get('acodec') != 'none'
+                        and f.get('vcodec') != 'none'
+                        and f.get('url')
+                    ):
+                        if best_format is None or (f.get("tbr") or 0) > (best_format.get("tbr") or 0):
+                            best_format = f
 
-            final_url = best_format["url"] if best_format else info.get("url")
+                final_url = best_format["url"] if best_format else info.get("url")
 
-            return {
-                "title": info.get("title", "Unknown"),
-                "url": final_url,
-                "duration": info.get("duration"),
-                "uploader": info.get("uploader", "Unknown"),
-                "platform": platform
-            }
+                return {
+                    "title": info.get("title", "Unknown"),
+                    "url": final_url,
+                    "duration": info.get("duration"),
+                    "uploader": info.get("uploader", "Unknown"),
+                    "platform": platform
+                }
 
-    except Exception as e:
-        return {"error": f"❌ Error: {str(e)}"}
+        except Exception as e:
+            print(f"[{cookie_file}] failed: {e}")
+            continue  # Try next cookie
+
+    return {"error": "❌ Failed using all cookie files."}
 
 @app.route('/getlink', methods=['POST'])
 def get_link():
