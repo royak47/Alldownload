@@ -43,8 +43,9 @@ def get_direct_video_url(link):
 
     elif platform == "pinterest":
         import requests
+        from flask import current_app
 
-        # Expand pin.it short links
+        # Step 1: Expand pin.it short links
         if "pin.it" in link:
             try:
                 r = requests.get(link, allow_redirects=True, timeout=5)
@@ -55,51 +56,54 @@ def get_direct_video_url(link):
             except Exception as e:
                 return {"error": f"❌ Pinterest redirect failed: {str(e)}"}
 
-        ydl_opts = {
-            'quiet': True,
-            'skip_download': True,
-            'force_generic_extractor': True,
-            'format': 'bestvideo+bestaudio/best',
-            'merge_output_format': 'mp4',
-        }
-
+        # Step 2: yt-dlp safe execution
         try:
+            ydl_opts = {
+                'quiet': True,
+                'skip_download': True,
+                'force_generic_extractor': True,
+                'format': 'bestvideo+bestaudio/best',
+                'merge_output_format': 'mp4',
+            }
+
             with YoutubeDL(ydl_opts) as ydl:
                 info = ydl.extract_info(link, download=False)
 
-                formats = info.get("formats") or []
-                best_url = None
+            formats = info.get("formats", [])
+            best_url = None
 
-                # First priority: try to get direct MP4 with audio+video
+            # Priority 1: MP4 with both video and audio
+            for f in formats:
+                if (
+                    f.get("url")
+                    and f.get("ext") == "mp4"
+                    and f.get("vcodec") != "none"
+                    and f.get("acodec") != "none"
+                ):
+                    best_url = f["url"]
+                    break
+
+            # Priority 2: fallback to other types if needed
+            if not best_url:
                 for f in formats:
-                    if (
-                        f.get("url")
-                        and f.get("ext") in ["mp4"]
-                        and f.get("vcodec") != "none"
-                        and f.get("acodec") != "none"
-                    ):
+                    if f.get("url") and f.get("ext") in ["mp4", "m4a", "webm", "m3u8"]:
                         best_url = f["url"]
                         break
 
-                # Second priority: fallback to highest quality video stream (e.g., HLS)
-                if not best_url:
-                    for f in formats:
-                        if f.get("url") and f.get("ext") in ["mp4", "m4a", "webm", "m3u8"]:
-                            best_url = f["url"]
-                            break
+            if not best_url:
+                return {"error": "❌ No valid Pinterest video format found."}
 
-                if not best_url:
-                    return {"error": "❌ No valid Pinterest video format found."}
-
-                return {
-                    "title": info.get("title", "Unknown"),
-                    "url": best_url,
-                    "duration": info.get("duration"),
-                    "uploader": info.get("uploader", "Unknown"),
-                    "platform": platform
-                }
+            return {
+                "title": info.get("title", "Unknown"),
+                "url": best_url,
+                "duration": info.get("duration"),
+                "uploader": info.get("uploader", "Unknown"),
+                "platform": platform
+            }
 
         except Exception as e:
+            import traceback
+            traceback.print_exc()
             return {"error": f"❌ Pinterest download failed: {str(e)}"}
 
     # Collect cookie files
