@@ -10,7 +10,7 @@ MIN_YTDLP_VERSION = "2024.05.27"
 if version.parse(ydl_version) < version.parse(MIN_YTDLP_VERSION):
     raise RuntimeError(f"yt-dlp >= {MIN_YTDLP_VERSION} required, found {ydl_version}")
 
-COOKIES_DIR = "cookies"  # Folder containing multiple .txt cookie files
+COOKIES_DIR = "cookies"  # Only YouTube and Instagram will use cookie rotation
 
 def get_platform(url: str) -> str:
     if "instagram.com" in url:
@@ -42,84 +42,36 @@ def get_direct_video_url(link):
         }
 
     elif platform == "pinterest":
-        import requests
-        from flask import current_app
+        base_opts = {
+            'quiet': True,
+            'skip_download': True,
+            'format_sort': ['res', 'tbr'],
+            'format': 'V_HLSV3_MOBILE-1296/V_HLSV3_MOBILE-1026/V_HLSV3_MOBILE-735/best',
+        }
 
-        # Step 1: Expand pin.it short links
-        if "pin.it" in link:
-            try:
-                r = requests.get(link, allow_redirects=True, timeout=5)
-                if r.status_code == 200:
-                    link = r.url.split("?")[0]
-                else:
-                    return {"error": "❌ Failed to expand Pinterest short link."}
-            except Exception as e:
-                return {"error": f"❌ Pinterest redirect failed: {str(e)}"}
+    else:  # x.com or generic
+        base_opts = {
+            'quiet': True,
+            'skip_download': True,
+            'format': 'best[ext=mp4]/best',
+        }
 
-        # Step 2: yt-dlp safe execution
-        try:
-            ydl_opts = {
-                'quiet': True,
-                'skip_download': True,
-                'force_generic_extractor': True,
-                'format': 'bestvideo+bestaudio/best',
-                'merge_output_format': 'mp4',
-            }
-
-            with YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(link, download=False)
-
-            formats = info.get("formats", [])
-            best_url = None
-
-            # Priority 1: MP4 with both video and audio
-            for f in formats:
-                if (
-                    f.get("url")
-                    and f.get("ext") == "mp4"
-                    and f.get("vcodec") != "none"
-                    and f.get("acodec") != "none"
-                ):
-                    best_url = f["url"]
-                    break
-
-            # Priority 2: fallback to other types if needed
-            if not best_url:
-                for f in formats:
-                    if f.get("url") and f.get("ext") in ["mp4", "m4a", "webm", "m3u8"]:
-                        best_url = f["url"]
-                        break
-
-            if not best_url:
-                return {"error": "❌ No valid Pinterest video format found."}
-
-            return {
-                "title": info.get("title", "Unknown"),
-                "url": best_url,
-                "duration": info.get("duration"),
-                "uploader": info.get("uploader", "Unknown"),
-                "platform": platform
-            }
-
-        except Exception as e:
-            import traceback
-            traceback.print_exc()
-            return {"error": f"❌ Pinterest download failed: {str(e)}"}
-
-    # Collect cookie files
+    # Collect cookie files only for YouTube and Instagram
     cookie_files = []
-    cookies_folder = COOKIES_DIR
-    if os.path.exists(cookies_folder):
-        cookie_files = [
-            os.path.join(cookies_folder, f)
-            for f in os.listdir(cookies_folder)
-            if f.endswith(".txt")
-        ]
+    if platform in ["youtube", "instagram"]:
+        if os.path.exists(COOKIES_DIR):
+            cookie_files = [
+                os.path.join(COOKIES_DIR, f)
+                for f in os.listdir(COOKIES_DIR)
+                if f.endswith(".txt")
+            ]
+    else:
+        cookie_files = [None]  # Skip cookie rotation for other platforms
 
     for cookie_file in cookie_files + [None]:
         ydl_opts = base_opts.copy()
         if cookie_file:
-            ydl_opts['cookiefile'] = cookie_file
+            ydl_opts["cookiefile"] = cookie_file
 
         try:
             with YoutubeDL(ydl_opts) as ydl:
@@ -143,10 +95,10 @@ def get_direct_video_url(link):
                 }
 
         except Exception as e:
-            print(f"[{cookie_file}] failed: {e}")
+            print(f"[{platform.upper()}][{cookie_file or 'no-cookie'}] failed: {e}")
             continue
 
-    return {"error": "❌ Error: Failed using all cookie files."}
+    return {"error": "❌ Error: Failed to get video link."}
 
 @app.route('/getlink', methods=['POST'])
 def get_link():
